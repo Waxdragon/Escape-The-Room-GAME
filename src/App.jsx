@@ -154,9 +154,10 @@ function Room({ onSelect, selected, chestOpened, won, targets, found, onDiscover
     <Canvas shadows camera={{ position: [0, 1.65, 0], fov: 74 }} dpr={[1, 1.6]}>
       <color attach="background" args={['#172522']} />
       <fog attach="fog" args={['#172522', 12, 24]} />
-      <ambientLight intensity={0.55} color="#b9d6c9" />
+      <ambientLight intensity={0.48} color="#b9d6c9" />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={70} color="#f4d3a0" castShadow shadow-mapSize={[1024, 1024]} />
       <pointLight position={[4, 2.4, -2]} intensity={18} distance={9} color="#f6b967" />
+      <RoomLighting />
 
       <RoomShell />
       <Rug />
@@ -166,10 +167,122 @@ function Room({ onSelect, selected, chestOpened, won, targets, found, onDiscover
       <Chest {...interactive('chest')} opened={chestOpened} selected={selected === 'chest'} />
       <ExitDoor {...interactive('door')} open={won} />
       <Plant />
+      <BrokenObjects />
+      <WanderingRat path={[[-4.8, 2.8], [-2.4, 2.8], [-1.2, 0.8], [-3.5, -0.5]]} speed={0.48} phase={0.2} />
+      <WanderingRat path={[[4.8, 2.8], [2.6, 1.9], [3.2, -0.8], [5.4, -2.5]]} speed={0.34} phase={1.8} scale={0.82} />
       <FirstPersonController targets={targets} found={found} onDiscover={onDiscover} />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.4} scale={14} blur={2.2} far={5} />
     </Canvas>
   )
+}
+
+function RoomLighting() {
+  return <>
+    <CeilingLamp position={[-4.2, 5.72, -1.9]} color="#f7d49b" intensity={7} />
+    <CeilingLamp position={[0, 5.72, -2.4]} color="#ffdca7" intensity={8} />
+    <CeilingLamp position={[4.2, 5.72, -1.4]} color="#e9b4ff" intensity={5} />
+    <WallSconce position={[-3.8, 4.25, -5.03]} color="#ffc078" phase={0.5} />
+    <WallSconce position={[0, 4.25, -5.03]} color="#ffcf83" phase={2.2} unstable />
+    <WallSconce position={[3.8, 4.25, -5.03]} color="#c3d8ff" phase={4.1} />
+  </>
+}
+
+function CeilingLamp({ position, color, intensity }) {
+  return <group position={position}>
+    <mesh castShadow><cylinderGeometry args={[0.06, 0.06, 0.45, 10]} /><meshStandardMaterial color="#34251f" metalness={0.5} /></mesh>
+    <mesh position={[0, -0.3, 0]} castShadow><sphereGeometry args={[0.2, 16, 10]} /><meshStandardMaterial color="#e4b56c" emissive={color} emissiveIntensity={0.8} /></mesh>
+    <pointLight position={[0, -0.34, 0]} color={color} intensity={intensity} distance={7} decay={2} />
+  </group>
+}
+
+function WallSconce({ position, color, phase = 0, unstable = false }) {
+  const light = useRef()
+  const bulb = useRef()
+
+  useFrame(({ clock }) => {
+    if (!unstable || !light.current) return
+    const elapsed = clock.elapsedTime + phase
+    const sharpFlicker = Math.sin(elapsed * 9) * 0.1 + Math.sin(elapsed * 21) * 0.08
+    const blink = Math.sin(elapsed * 2.1) > -0.2 ? 1 : 0.08
+    const brightness = Math.max(0.04, blink * (0.78 + sharpFlicker))
+    light.current.intensity = 8 * brightness
+    if (bulb.current) bulb.current.emissiveIntensity = 0.25 + brightness * 1.5
+  })
+
+  return <group position={position}>
+    <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><boxGeometry args={[0.65, 0.16, 0.24]} /><meshStandardMaterial color="#60442e" metalness={0.55} roughness={0.35} /></mesh>
+    <mesh ref={bulb} position={[0, 0, 0.15]}><sphereGeometry args={[0.13, 14, 10]} /><meshStandardMaterial color="#f6c477" emissive={color} emissiveIntensity={1.5} /></mesh>
+    <pointLight ref={light} position={[0, 0, 0.22]} color={color} intensity={unstable ? 8 : 5} distance={5.5} decay={2} />
+  </group>
+}
+
+function BrokenObjects() {
+  return <>
+    <BrokenMirror />
+    <BrokenChair />
+    <BrokenVase />
+  </>
+}
+
+function BrokenMirror() {
+  return <group position={[-6.77, 2.45, -1.15]} rotation={[0, Math.PI / 2, 0]}>
+    <mesh castShadow><boxGeometry args={[1.55, 2.05, 0.12]} /><meshStandardMaterial color="#76502f" metalness={0.65} roughness={0.35} /></mesh>
+    <mesh position={[0, 0, 0.08]}><boxGeometry args={[1.3, 1.8, 0.025]} /><meshStandardMaterial color="#243d3b" roughness={0.25} metalness={0.25} /></mesh>
+    <mesh position={[0, 0.42, 0.105]} rotation={[0, 0, -0.5]}><boxGeometry args={[0.035, 0.9, 0.02]} /><meshStandardMaterial color="#b6c8b8" emissive="#789887" emissiveIntensity={0.35} /></mesh>
+    <mesh position={[-0.22, -0.28, 0.105]} rotation={[0, 0, 0.75]}><boxGeometry args={[0.03, 0.65, 0.02]} /><meshStandardMaterial color="#b6c8b8" emissive="#789887" emissiveIntensity={0.35} /></mesh>
+    <mesh position={[0.2, -0.42, 0.105]} rotation={[0, 0, -1.1]}><boxGeometry args={[0.03, 0.55, 0.02]} /><meshStandardMaterial color="#b6c8b8" emissive="#789887" emissiveIntensity={0.35} /></mesh>
+  </group>
+}
+
+function BrokenChair() {
+  return <group position={[3.35, 0.04, 1.45]} rotation={[0, -0.25, 0.04]}>
+    <mesh position={[0, 1.1, 0]} castShadow><boxGeometry args={[1.35, 0.16, 1.18]} /><meshStandardMaterial color="#68452f" roughness={0.8} /></mesh>
+    <mesh position={[0, 1.82, 0.42]} rotation={[-0.12, 0, 0]} castShadow><boxGeometry args={[1.25, 1.45, 0.14]} /><meshStandardMaterial color="#5a3c2d" roughness={0.8} /></mesh>
+    {[-0.48, 0.48].map((x) => <mesh key={`front-${x}`} position={[x, 0.52, 0.38]} rotation={[0.08, 0, x * 0.05]} castShadow><boxGeometry args={[0.14, 1.1, 0.14]} /><meshStandardMaterial color="#4c3327" /></mesh>)}
+    <mesh position={[0.48, 0.5, -0.38]} rotation={[0.52, 0, -0.2]} castShadow><boxGeometry args={[0.14, 1.2, 0.14]} /><meshStandardMaterial color="#4c3327" /></mesh>
+    <mesh position={[-0.46, 0.28, -0.38]} rotation={[1.02, 0, 0.2]} castShadow><boxGeometry args={[0.16, 0.8, 0.16]} /><meshStandardMaterial color="#4c3327" /></mesh>
+    <mesh position={[-0.85, 0.08, 0.05]} rotation={[0.2, 0.4, 0.5]} castShadow><boxGeometry args={[0.22, 0.18, 0.5]} /><meshStandardMaterial color="#9a6240" /></mesh>
+  </group>
+}
+
+function BrokenVase() {
+  return <group position={[-2.8, 0.08, 2.35]}>
+    <mesh position={[0, 0.2, 0]} rotation={[0, 0, -0.25]} castShadow><coneGeometry args={[0.3, 0.5, 7]} /><meshStandardMaterial color="#986044" roughness={0.75} /></mesh>
+    <mesh position={[-0.4, 0.08, 0.12]} rotation={[0.1, 0.2, 0.3]} castShadow><dodecahedronGeometry args={[0.12, 0]} /><meshStandardMaterial color="#b87851" roughness={0.8} /></mesh>
+    <mesh position={[0.35, 0.07, -0.12]} rotation={[-0.2, 0.1, -0.5]} castShadow><dodecahedronGeometry args={[0.1, 0]} /><meshStandardMaterial color="#b87851" roughness={0.8} /></mesh>
+  </group>
+}
+
+function WanderingRat({ path, speed, phase = 0, scale = 1 }) {
+  const rat = useRef()
+  const tail = useMemo(() => new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.12, -0.2),
+    new THREE.Vector3(-0.18, 0.08, -0.46),
+    new THREE.Vector3(0.08, 0.06, -0.68),
+  ]), [])
+
+  useFrame(({ clock }) => {
+    if (!rat.current) return
+    const progress = (clock.elapsedTime * speed + phase) % path.length
+    const index = Math.floor(progress)
+    const blend = progress - index
+    const current = path[index]
+    const next = path[(index + 1) % path.length]
+    const x = THREE.MathUtils.lerp(current[0], next[0], blend)
+    const z = THREE.MathUtils.lerp(current[1], next[1], blend)
+    rat.current.position.set(x, 0.17 + Math.sin(clock.elapsedTime * 12 + phase) * 0.025, z)
+    rat.current.rotation.y = Math.atan2(next[0] - current[0], next[1] - current[1])
+  })
+
+  return <group ref={rat} scale={scale}>
+    <mesh position={[0, 0.12, 0]} castShadow><sphereGeometry args={[0.22, 14, 10]} /><meshStandardMaterial color="#443b38" roughness={0.95} /></mesh>
+    <mesh position={[0, 0.15, 0.25]} castShadow><sphereGeometry args={[0.16, 14, 10]} /><meshStandardMaterial color="#514541" roughness={0.95} /></mesh>
+    <mesh position={[-0.1, 0.29, 0.24]} castShadow><sphereGeometry args={[0.07, 10, 8]} /><meshStandardMaterial color="#73534e" /></mesh>
+    <mesh position={[0.1, 0.29, 0.24]} castShadow><sphereGeometry args={[0.07, 10, 8]} /><meshStandardMaterial color="#73534e" /></mesh>
+    <mesh position={[-0.06, 0.18, 0.39]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#e6c67a" /></mesh>
+    <mesh position={[0.06, 0.18, 0.39]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#e6c67a" /></mesh>
+    <mesh><tubeGeometry args={[tail, 12, 0.022, 6, false]} /><meshBasicMaterial color="#765850" /></mesh>
+  </group>
 }
 
 function RoomShell() {
