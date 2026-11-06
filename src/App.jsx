@@ -173,7 +173,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
     <Canvas key={hauntedRoom ? 'haunted-room' : 'study-room'} shadows camera={{ position: [0, 1.65, 0], fov: 74 }} dpr={[1, 1.6]}>
       <color attach="background" args={[hauntedRoom ? '#120f15' : '#172522']} />
       <fog attach="fog" args={[hauntedRoom ? '#120f15' : '#172522', 12, hauntedRoom ? 30 : 24]} />
-      <ambientLight intensity={hauntedRoom ? 0.22 : 0.48} color={hauntedRoom ? '#8c788f' : '#b9d6c9'} />
+      <ambientLight intensity={hauntedRoom ? 0.42 : 0.48} color={hauntedRoom ? '#a58fa9' : '#b9d6c9'} />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 28 : 70} color={hauntedRoom ? '#a795b8' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
       {hauntedRoom ? <HauntedRoomContents /> : <>
         <pointLight position={[4, 2.4, -2]} intensity={18} distance={9} color="#f6b967" />
@@ -200,9 +200,46 @@ function HauntedRoomContents() {
   return <>
     <HauntedRoomShell />
     <ThreeStoreyStairs />
+    <HauntedLighting />
     <HauntedRoomProps />
     <FinalKey position={[7.2, -4.28, -4.6]} />
   </>
+}
+
+function HauntedLighting() {
+  return <>
+    <HauntedLantern position={[-1.5, -2.25, -4.5]} color="#ff8c55" intensity={13} />
+    <HauntedLantern position={[6.6, -2.25, 3.8]} color="#b96aff" intensity={10} unstable phase={1.2} />
+    <HauntedLantern position={[-1.5, 2.55, -4.5]} color="#f0a35d" intensity={16} />
+    <HauntedLantern position={[6.6, 2.55, 3.8]} color="#8d9cff" intensity={14} unstable phase={2.4} />
+    <HauntedLantern position={[-1.5, 7.55, -4.5]} color="#9b8cff" intensity={18} />
+    <HauntedLantern position={[6.6, 7.55, 3.8]} color="#ff705b" intensity={13} unstable phase={3.6} />
+    <pointLight position={[0, -2.2, 0]} color="#b65b52" intensity={18} distance={11} decay={1.4} />
+    <pointLight position={[0, 2.7, 0]} color="#c48bbd" intensity={22} distance={12} decay={1.4} />
+    <pointLight position={[0, 7.5, 0]} color="#7e84c4" intensity={24} distance={12} decay={1.4} />
+  </>
+}
+
+function HauntedLantern({ position, color, intensity, unstable = false, phase = 0 }) {
+  const light = useRef()
+  const bulb = useRef()
+
+  useFrame(({ clock }) => {
+    if (!unstable || !light.current) return
+    const t = clock.elapsedTime + phase
+    const flicker = Math.sin(t * 8) * 0.12 + Math.sin(t * 19) * 0.08
+    const blink = Math.sin(t * 1.8) > -0.35 ? 1 : 0.18
+    const brightness = Math.max(0.08, blink * (0.82 + flicker))
+    light.current.intensity = intensity * brightness
+    if (bulb.current) bulb.current.emissiveIntensity = 0.4 + brightness * 1.8
+  })
+
+  return <group position={position}>
+    <mesh castShadow><cylinderGeometry args={[0.2, 0.2, 0.48, 10]} /><meshStandardMaterial color="#302329" metalness={0.65} roughness={0.35} /></mesh>
+    <mesh position={[0, -0.03, 0]}><sphereGeometry args={[0.13, 12, 10]} /><meshStandardMaterial ref={bulb} color="#ffd18a" emissive={color} emissiveIntensity={1.5} /></mesh>
+    <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.35, 0.18, 8]} /><meshStandardMaterial color="#3a272c" metalness={0.5} /></mesh>
+    <pointLight ref={light} color={color} intensity={intensity} distance={7} decay={1.5} />
+  </group>
 }
 
 function HauntedRoomShell() {
