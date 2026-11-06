@@ -74,7 +74,7 @@ button { cursor: pointer; }
 .floor-objective-head b { color: var(--gold); font: 10px 'DM Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
 .floor-objective-head small { color: #839990; font: 9px 'DM Mono', monospace; }
 .floor-task { color: #9aafa5; font: 9px/1.45 'DM Mono', monospace; display: flex; gap: 6px; }
-.floor-task span { color: var(--coral); }
+.floor-task span { color: var(--coral); }.floor-task.locked { opacity: .45; }.floor-task.completed { color: #b5d1b1; }.floor-task.completed span { color: #83bf96; }.final-objective { border-color: #8a6a3f; }.final-objective.completed { background: rgba(139, 181, 135, .12); }
 .floor-objectives::-webkit-scrollbar { width: 3px; }.floor-objectives::-webkit-scrollbar-thumb { background: #49665b; }
 .hint-footer { display: flex; gap: 8px; color: #789188; font: 10px/1.55 'DM Mono', monospace; padding-top: 18px; margin-top: 18px; border-top: 1px solid #28413a; }.hint-footer b { color: #c0d0c6; font-weight: 500; }.hint-bulb { color: var(--gold); font-size: 17px; }
 .win-banner { position: absolute; left: 22px; right: 22px; bottom: 22px; display: flex; align-items: center; gap: 14px; padding: 15px 17px; color: #193128; background: rgba(222, 190, 123, .94); box-shadow: 0 10px 30px rgba(0,0,0,.3); }.final-win { background: rgba(177, 211, 178, .95); }.win-icon { font-size: 26px; }.win-banner p { margin: 0 0 2px; font: 9px 'DM Mono', monospace; letter-spacing: .15em; }.win-banner strong { font: 500 18px 'Playfair Display', serif; }.win-banner button { margin-left: auto; background: transparent; border: 1px solid rgba(25,49,40,.5); padding: 9px 12px; color: #193128; font: 9px 'DM Mono', monospace; letter-spacing: .1em; }
