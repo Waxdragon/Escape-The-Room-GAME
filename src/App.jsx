@@ -136,7 +136,21 @@ function FirstPersonController({ targets, found, onDiscover, hauntedRoom = false
     const zLimit = hauntedRoom ? 6.45 : 4.45
     player.current.x = THREE.MathUtils.clamp(player.current.x + velocity.current.x * step, -xLimit, xLimit)
     player.current.z = THREE.MathUtils.clamp(player.current.z + velocity.current.z * step, -zLimit, zLimit)
-    player.current.y = 1.65
+
+    if (hauntedRoom) {
+      const stairProgress = THREE.MathUtils.clamp((player.current.x + 8.2) / 4.3, 0, 1)
+      const lowerStairs = Math.abs(player.current.z - 3.05) < 1.05 && player.current.x > -8.7 && player.current.x < -3.7
+      const upperStairs = Math.abs(player.current.z + 3.05) < 1.05 && player.current.x > -8.7 && player.current.x < -3.7
+      let targetHeight = player.current.y
+      if (lowerStairs) targetHeight = 1.65 - stairProgress * 4.8
+      if (upperStairs) targetHeight = 1.65 + stairProgress * 5
+      if (!lowerStairs && !upperStairs && player.current.x > -3.7) {
+        targetHeight = player.current.y > 4 ? 6.65 : player.current.y < -2 ? -3.05 : 1.65
+      }
+      player.current.y = THREE.MathUtils.damp(player.current.y, targetHeight, 14, delta)
+    } else {
+      player.current.y = 1.65
+    }
 
     camera.position.set(player.current.x, player.current.y, player.current.z)
     targets.forEach(({ id, position }) => {
@@ -185,33 +199,64 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
 function HauntedRoomContents() {
   return <>
     <HauntedRoomShell />
+    <ThreeStoreyStairs />
     <HauntedRoomProps />
-    <FinalKey position={[7.2, 0.48, -4.6]} />
+    <FinalKey position={[7.2, -4.28, -4.6]} />
   </>
 }
 
 function HauntedRoomShell() {
   return <>
-    <mesh receiveShadow position={[0, -0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[22, 14]} /><meshStandardMaterial color="#211a20" roughness={1} /></mesh>
-    <mesh receiveShadow position={[0, 3.5, -7]}><boxGeometry args={[22, 7.2, 0.2]} /><meshStandardMaterial color="#241c27" roughness={0.95} /></mesh>
-    <mesh receiveShadow position={[-10.9, 3.5, 0]} rotation={[0, Math.PI / 2, 0]}><boxGeometry args={[14, 7.2, 0.2]} /><meshStandardMaterial color="#1b1720" roughness={0.95} /></mesh>
-    <mesh receiveShadow position={[10.9, 3.5, 0]} rotation={[0, Math.PI / 2, 0]}><boxGeometry args={[14, 7.2, 0.2]} /><meshStandardMaterial color="#1b1720" roughness={0.95} /></mesh>
-    <mesh position={[0, 7.1, 0]}><boxGeometry args={[22, 0.16, 14]} /><meshStandardMaterial color="#120f15" roughness={1} /></mesh>
+    <mesh receiveShadow position={[0, -4.82, 0]}><boxGeometry args={[22, 0.3, 14]} /><meshStandardMaterial color="#211a20" roughness={1} /></mesh>
+    <mesh receiveShadow position={[0, 0.02, 0]}><boxGeometry args={[22, 0.3, 14]} /><meshStandardMaterial color="#2b2029" roughness={0.95} /></mesh>
+    <mesh receiveShadow position={[0, 5.02, 0]}><boxGeometry args={[22, 0.3, 14]} /><meshStandardMaterial color="#241c27" roughness={0.95} /></mesh>
+    <mesh receiveShadow position={[0, 3.5, -7]}><boxGeometry args={[22, 14.2, 0.2]} /><meshStandardMaterial color="#241c27" roughness={0.95} /></mesh>
+    <mesh receiveShadow position={[-10.9, 3.5, 0]} rotation={[0, Math.PI / 2, 0]}><boxGeometry args={[14, 14.2, 0.2]} /><meshStandardMaterial color="#1b1720" roughness={0.95} /></mesh>
+    <mesh receiveShadow position={[10.9, 3.5, 0]} rotation={[0, Math.PI / 2, 0]}><boxGeometry args={[14, 14.2, 0.2]} /><meshStandardMaterial color="#1b1720" roughness={0.95} /></mesh>
+    <mesh position={[0, 8.1, 0]}><boxGeometry args={[22, 0.16, 14]} /><meshStandardMaterial color="#120f15" roughness={1} /></mesh>
     {[-8, -4, 0, 4, 8].map((x) => <mesh key={x} position={[x, 3.4, -6.84]}><boxGeometry args={[0.24, 6.7, 0.18]} /><meshStandardMaterial color="#473040" roughness={0.8} /></mesh>)}
   </>
+}
+
+function ThreeStoreyStairs() {
+  const lowerSteps = Array.from({ length: 9 }, (_, index) => {
+    const top = -0.34 - index * 0.59
+    return <mesh key={`lower-${index}`} position={[-8.2 + index * 0.56, top / 2, 3.05]} castShadow><boxGeometry args={[0.68, Math.abs(top), 1.35]} /><meshStandardMaterial color={index % 2 ? '#3c2929' : '#5a3932'} roughness={0.95} /></mesh>
+  })
+  const upperSteps = Array.from({ length: 9 }, (_, index) => {
+    const height = 0.34 + index * 0.59
+    return <mesh key={`upper-${index}`} position={[-8.2 + index * 0.56, height / 2, -3.05]} castShadow><boxGeometry args={[0.68, height, 1.35]} /><meshStandardMaterial color={index % 2 ? '#4b3031' : '#694239'} roughness={0.92} /></mesh>
+  })
+
+  return <group>
+    {lowerSteps}
+    {upperSteps}
+    <mesh position={[-5.8, 2.65, 3.78]} rotation={[0, 0, 0.2]}><boxGeometry args={[5.6, 0.14, 0.14]} /><meshStandardMaterial color="#34232a" /></mesh>
+    <mesh position={[-5.8, -2.4, 3.78]} rotation={[0, 0, -0.2]}><boxGeometry args={[5.6, 0.14, 0.14]} /><meshStandardMaterial color="#34232a" /></mesh>
+    <mesh position={[-5.8, 2.65, -3.78]} rotation={[0, 0, -0.2]}><boxGeometry args={[5.6, 0.14, 0.14]} /><meshStandardMaterial color="#34232a" /></mesh>
+    <mesh position={[-5.8, -2.4, -3.78]} rotation={[0, 0, 0.2]}><boxGeometry args={[5.6, 0.14, 0.14]} /><meshStandardMaterial color="#34232a" /></mesh>
+    <pointLight position={[-5.5, 1.2, 3.05]} color="#a94f4b" intensity={4} distance={5} />
+    <pointLight position={[-5.5, 1.2, -3.05]} color="#7773c2" intensity={4} distance={5} />
+  </group>
 }
 
 function HauntedRoomProps() {
   return <>
     <HauntedCross position={[0, 3.4, -6.82]} scale={1.35} />
     <HauntedCross position={[-6.5, 2.5, -6.78]} scale={0.72} rotation={[0, 0.15, 0]} />
+    <HauntedCross position={[5.2, 7.7, -6.78]} scale={0.9} rotation={[0, -0.12, 0]} />
+    <HauntedCross position={[-5.8, -1.45, -6.78]} scale={0.8} rotation={[0, 0.18, 0]} />
     <RitualTable position={[0, 0, -4.55]} />
     <WeaponRack position={[6.9, 0, -6.55]} />
+    <WeaponRack position={[6.9, 5, -6.55]} />
     <OldGun position={[6.2, 1.18, -6.35]} rotation={[0, 0, 0.06]} />
     <OldGun position={[7.35, 1.12, -6.34]} rotation={[0, 0, -0.08]} />
+    <OldGun position={[6.25, 6.18, -6.35]} rotation={[0, 0, 0.06]} />
     <DeadBody position={[-6.2, 0, 1.8]} rotation={[0, -0.5, 0.12]} />
     <DeadBody position={[3.9, 0, 3.2]} rotation={[0, 1.1, -0.08]} pale />
     <DeadBody position={[-2.8, 0, -1.3]} rotation={[0, -1.6, 0.18]} />
+    <DeadBody position={[-5.4, -4.65, 1.8]} rotation={[0, 0.6, 0.12]} />
+    <DeadBody position={[3.6, 5, 2.2]} rotation={[0, -1.1, -0.08]} pale />
     <pointLight position={[0, 2.2, -4.3]} color="#c24646" intensity={5} distance={6} />
     <pointLight position={[6.8, 2.6, -6.1]} color="#7565b8" intensity={4} distance={5} />
     <pointLight position={[-6, 1.8, 1.5]} color="#9e4e48" intensity={3} distance={5} />
