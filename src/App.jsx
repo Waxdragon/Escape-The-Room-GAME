@@ -9,6 +9,7 @@ const HOTSPOTS = {
   chest: { label: 'Locked chest', short: 'Chest', location: 'South wall', icon: '▣' },
   bookshelf: { label: 'Bookcase', short: 'Bookcase', location: 'West wall', icon: '≡' },
   door: { label: 'The exit door', short: 'Exit', location: 'South-east wall', icon: '↗' },
+  key: { label: 'The last key', short: 'Last key', location: 'Haunted stairway', icon: '⚿' },
 }
 
 const ROUND_TARGETS = [
@@ -24,7 +25,7 @@ const ROUND_TARGETS = [
   ],
 ]
 
-function Map({ selected, discovered, onSelect }) {
+function Map({ selected, discovered, onSelect, stairsUnlocked }) {
   return (
     <section className="map-panel">
       <div className="map-heading">
@@ -57,6 +58,10 @@ function Map({ selected, discovered, onSelect }) {
           <MapMarker id="chest" x="550" y="114" selected={selected} discovered={discovered} onSelect={onSelect} />
           <MapMarker id="desk" x="736" y="84" selected={selected} discovered={discovered} onSelect={onSelect} />
           <MapMarker id="door" x="640" y="75" selected={selected} discovered={discovered} onSelect={onSelect} />
+          {stairsUnlocked && <>
+            <path className="stair-route" d="M522 47 l30 18 22 -12" />
+            <MapMarker id="key" x="574" y="53" selected={selected} discovered={discovered} onSelect={onSelect} />
+          </>}
           <circle className="player-pulse" cx="493" cy="85" r="6" />
           <circle className="player-dot" cx="493" cy="85" r="3" />
         </svg>
@@ -81,6 +86,8 @@ function FirstPersonController({ targets, found, onDiscover }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
   const keys = useRef({})
   const yaw = useRef(0)
+  const cameraYaw = useRef(0)
+  const velocity = useRef(new THREE.Vector3())
   const { camera, gl } = useThree()
 
   useEffect(() => {
@@ -96,7 +103,6 @@ function FirstPersonController({ targets, found, onDiscover }) {
     const look = (event) => {
       if (document.pointerLockElement !== canvas) return
       yaw.current = THREE.MathUtils.clamp(yaw.current - event.movementX * 0.0025, -maxYaw, maxYaw)
-      camera.rotation.set(-0.08, yaw.current, 0)
     }
     const down = (event) => {
       const key = event.key.toLowerCase()
@@ -123,15 +129,18 @@ function FirstPersonController({ targets, found, onDiscover }) {
     const currentKeys = keys.current
     const forwardInput = (currentKeys.arrowup || currentKeys.w ? 1 : 0) - (currentKeys.arrowdown || currentKeys.s ? 1 : 0)
     const strafeInput = (currentKeys.arrowright || currentKeys.d ? 1 : 0) - (currentKeys.arrowleft || currentKeys.a ? 1 : 0)
-    const forward = new THREE.Vector3(-Math.sin(yaw.current), 0, -Math.cos(yaw.current))
-    const right = new THREE.Vector3(Math.cos(yaw.current), 0, -Math.sin(yaw.current))
-    const direction = forward.multiplyScalar(forwardInput).add(right.multiplyScalar(strafeInput))
+    const smoothFactor = 1 - Math.exp(-12 * delta)
+    cameraYaw.current = THREE.MathUtils.lerp(cameraYaw.current, yaw.current, smoothFactor)
+    camera.rotation.set(-0.08, cameraYaw.current, 0)
 
-    if (direction.lengthSq() > 0) {
-      direction.normalize().multiplyScalar(Math.min(delta, 0.05) * 3.2)
-      player.current.x = THREE.MathUtils.clamp(player.current.x + direction.x, -6.05, 6.05)
-      player.current.z = THREE.MathUtils.clamp(player.current.z + direction.z, -4.55, 4.45)
-    }
+    const forward = new THREE.Vector3(-Math.sin(cameraYaw.current), 0, -Math.cos(cameraYaw.current))
+    const right = new THREE.Vector3(Math.cos(cameraYaw.current), 0, -Math.sin(cameraYaw.current))
+    const desired = forward.multiplyScalar(forwardInput).add(right.multiplyScalar(strafeInput))
+    if (desired.lengthSq() > 0) desired.normalize().multiplyScalar(3.2)
+    velocity.current.lerp(desired, 1 - Math.exp(-14 * delta))
+    const step = Math.min(delta, 0.05)
+    player.current.x = THREE.MathUtils.clamp(player.current.x + velocity.current.x * step, -6.05, 6.05)
+    player.current.z = THREE.MathUtils.clamp(player.current.z + velocity.current.z * step, -4.55, 4.45)
 
     camera.position.set(player.current.x, 1.65, player.current.z)
     targets.forEach(({ id, position }) => {
@@ -144,7 +153,7 @@ function FirstPersonController({ targets, found, onDiscover }) {
   return null
 }
 
-function Room({ onSelect, selected, chestOpened, won, targets, found, onDiscover }) {
+function Room({ onSelect, selected, chestOpened, won, stairsUnlocked, targets, found, onDiscover }) {
   const interactive = (id) => ({
     onClick: (event) => { event.stopPropagation(); onSelect(id) },
     onPointerOver: (event) => { event.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -168,6 +177,7 @@ function Room({ onSelect, selected, chestOpened, won, targets, found, onDiscover
       <ExitDoor {...interactive('door')} open={won} />
       <Plant />
       <BrokenObjects />
+      {stairsUnlocked && <HauntedStairs />}
       <WanderingRat path={[[-4.8, 2.8], [-2.4, 2.8], [-1.2, 0.8], [-3.5, -0.5]]} speed={0.48} phase={0.2} />
       <WanderingRat path={[[4.8, 2.8], [2.6, 1.9], [3.2, -0.8], [5.4, -2.5]]} speed={0.34} phase={1.8} scale={0.82} />
       <FirstPersonController targets={targets} found={found} onDiscover={onDiscover} />
@@ -211,7 +221,7 @@ function WallSconce({ position, color, phase = 0, unstable = false }) {
 
   return <group position={position}>
     <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><boxGeometry args={[0.65, 0.16, 0.24]} /><meshStandardMaterial color="#60442e" metalness={0.55} roughness={0.35} /></mesh>
-    <mesh ref={bulb} position={[0, 0, 0.15]}><sphereGeometry args={[0.13, 14, 10]} /><meshStandardMaterial color="#f6c477" emissive={color} emissiveIntensity={1.5} /></mesh>
+    <mesh position={[0, 0, 0.15]}><sphereGeometry args={[0.13, 14, 10]} /><meshStandardMaterial ref={bulb} color="#f6c477" emissive={color} emissiveIntensity={1.5} /></mesh>
     <pointLight ref={light} position={[0, 0, 0.22]} color={color} intensity={unstable ? 8 : 5} distance={5.5} decay={2} />
   </group>
 }
@@ -282,6 +292,30 @@ function WanderingRat({ path, speed, phase = 0, scale = 1 }) {
     <mesh position={[-0.06, 0.18, 0.39]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#e6c67a" /></mesh>
     <mesh position={[0.06, 0.18, 0.39]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#e6c67a" /></mesh>
     <mesh><tubeGeometry args={[tail, 12, 0.022, 6, false]} /><meshBasicMaterial color="#765850" /></mesh>
+  </group>
+}
+
+function HauntedStairs() {
+  const key = useRef()
+  useFrame(({ clock }) => {
+    if (!key.current) return
+    key.current.position.y = 2.35 + Math.sin(clock.elapsedTime * 2.5) * 0.12
+    key.current.rotation.y = clock.elapsedTime * 1.6
+  })
+
+  return <group position={[1.7, 0, -1.3]}>
+    <mesh position={[0, 0.18, 0]} rotation={[0, 0.12, 0]} castShadow><boxGeometry args={[2.2, 0.3, 0.85]} /><meshStandardMaterial color="#4a3028" roughness={0.9} /></mesh>
+    {Array.from({ length: 7 }, (_, index) => <mesh key={index} position={[0, 0.28 + index * 0.31, -index * 0.42]} rotation={[0, 0.12, 0]} castShadow><boxGeometry args={[2.2 - index * 0.1, 0.28, 0.82]} /><meshStandardMaterial color={index % 2 ? '#5b3d2f' : '#704935'} roughness={0.82} /></mesh>)}
+    <mesh position={[-1.02, 1.45, -1.05]} rotation={[0, 0.12, 0.08]} castShadow><boxGeometry args={[0.16, 3.05, 0.16]} /><meshStandardMaterial color="#35231f" roughness={0.7} /></mesh>
+    <mesh position={[1.02, 1.45, -1.05]} rotation={[0, 0.12, -0.08]} castShadow><boxGeometry args={[0.16, 3.05, 0.16]} /><meshStandardMaterial color="#35231f" roughness={0.7} /></mesh>
+    <mesh position={[0, 2.35, -2.72]} rotation={[0, 0.12, 0]} castShadow><boxGeometry args={[2.1, 0.18, 1.5]} /><meshStandardMaterial color="#30211d" roughness={0.9} /></mesh>
+    <pointLight position={[0, 2.2, -1.1]} color="#c56d45" intensity={4} distance={4} />
+    <group ref={key} position={[0, 2.35, -1.35]}>
+      <mesh rotation={[0, 0, Math.PI / 2]}><torusGeometry args={[0.16, 0.045, 10, 20]} /><meshStandardMaterial color="#e3bd61" emissive="#b8782f" emissiveIntensity={1.2} metalness={0.75} roughness={0.2} /></mesh>
+      <mesh position={[0.22, 0, 0]}><boxGeometry args={[0.42, 0.06, 0.06]} /><meshStandardMaterial color="#e3bd61" emissive="#b8782f" emissiveIntensity={1.2} metalness={0.75} roughness={0.2} /></mesh>
+      <mesh position={[0.42, -0.08, 0]} rotation={[0, 0, -0.35]}><boxGeometry args={[0.08, 0.25, 0.06]} /><meshStandardMaterial color="#e3bd61" metalness={0.75} roughness={0.2} /></mesh>
+      <pointLight color="#ffc66c" intensity={2.4} distance={2.6} />
+    </group>
   </group>
 }
 
@@ -363,6 +397,7 @@ const CLUES = {
   bookshelf: { title: 'A wall of quiet books', text: 'Most spines are dust-covered. One book is warm to the touch, but its title is written in a language you do not recognize.', action: 'Pull the warm book', actionText: 'A click echoes from somewhere near the chest.' },
   chest: { title: 'The ironbound chest', text: 'Three brass dials wait below the lid. The combination is the only way to open it.', action: 'Enter combination' },
   door: { title: 'The exit', text: 'A heavy door with a keyhole shaped like a crescent moon. There is no handle on this side.', action: 'Try the door' },
+  key: { title: 'The last key', text: 'A cold brass key circles above the haunted stairway. Find it after completing every room objective.', action: 'Take the key' },
 }
 
 function App() {
@@ -370,11 +405,13 @@ function App() {
   const [selected, setSelected] = useState('painting')
   const [found, setFound] = useState([])
   const [roundComplete, setRoundComplete] = useState(false)
+  const [stairsUnlocked, setStairsUnlocked] = useState(false)
+  const [gameWon, setGameWon] = useState(false)
   const [message, setMessage] = useState('')
   const [seconds, setSeconds] = useState(18 * 60 + 42)
 
-  const targets = ROUND_TARGETS[(round - 1) % ROUND_TARGETS.length]
-  const clue = CLUES[selected]
+  const targets = stairsUnlocked ? [{ id: 'key', position: [1.7, -2.65] }] : ROUND_TARGETS[(round - 1) % ROUND_TARGETS.length]
+  const clue = CLUES[selected] || CLUES.painting
 
   useEffect(() => {
     const timer = window.setInterval(() => setSeconds((value) => value > 0 ? value - 1 : 0), 1000)
@@ -382,17 +419,24 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (found.length !== 3) return undefined
+    if (stairsUnlocked || gameWon || found.length !== 3) return undefined
     setRoundComplete(true)
     const nextRound = window.setTimeout(() => {
-      setRound((value) => value + 1)
-      setFound([])
-      setSelected('painting')
-      setMessage('New room loaded. Find the next three objects.')
+      if (round >= ROUND_TARGETS.length) {
+        setStairsUnlocked(true)
+        setFound([])
+        setSelected('key')
+        setMessage('The room is complete. A haunted stairway has appeared — find the last key.')
+      } else {
+        setRound((value) => value + 1)
+        setFound([])
+        setSelected('painting')
+        setMessage('New room loaded. Find the next three objects.')
+      }
       setRoundComplete(false)
     }, 2600)
     return () => window.clearTimeout(nextRound)
-  }, [found.length])
+  }, [found.length, round, stairsUnlocked, gameWon])
 
   const time = useMemo(() => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`, [seconds])
 
@@ -403,6 +447,12 @@ function App() {
 
   const discoverObject = (id) => {
     setSelected(id)
+    if (id === 'key') {
+      setFound((items) => items.includes(id) ? items : [...items, id])
+      setMessage('You found the last key. The exit is open — you escaped the haunted house!')
+      setGameWon(true)
+      return
+    }
     setMessage(`${HOTSPOTS[id].label} found. Keep moving to locate the other objects.`)
     setFound((items) => items.includes(id) ? items : [...items, id])
   }
@@ -414,13 +464,13 @@ function App() {
       <div className="top-status"><div className="timer"><span className="timer-dot" />{time}</div><div className="progress"><span>OBJECTS</span><b>{found.length} / 3</b><i><em style={{ width: `${found.length / 3 * 100}%` }} /></i></div></div>
     </header>
 
-    <Map selected={selected} discovered={found} onSelect={selectObject} />
+    <Map selected={selected} discovered={found} onSelect={selectObject} stairsUnlocked={stairsUnlocked} />
 
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">ROUND {String(round).padStart(2, '0')} · MOUSE LOOK</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={roundComplete} targets={targets} found={found} onDiscover={discoverObject} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK LEFT / RIGHT <span>·</span> WASD / ARROWS TO MOVE</div>{roundComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>ROUND COMPLETE</p><strong>Next room loading…</strong></div><span className="round-loader">● ● ●</span></div>}</div>
-        <div className="scene-caption"><span>First-person view. Click the room and look left or right, then walk close to all three objects.</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} stairsUnlocked={stairsUnlocked} targets={targets} found={found} onDiscover={discoverObject} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK LEFT / RIGHT <span>·</span> WASD / ARROWS TO MOVE</div>{roundComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>ROOM COMPLETE</p><strong>{round >= ROUND_TARGETS.length ? 'The haunted stairway is opening…' : 'Next room loading…'}</strong></div><span className="round-loader">● ● ●</span></div>}{gameWon && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>YOU ESCAPED</p><strong>The last key unlocked the house.</strong></div></div>}</div>
+        <div className="scene-caption"><span>{stairsUnlocked ? 'The final key is above the haunted stairway. Walk to its base to claim it.' : 'First-person view. Click the room and look left or right, then walk close to all three objects.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
       <aside className="clue-panel">
