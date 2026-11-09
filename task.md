@@ -13,6 +13,8 @@ The feedback should:
 - Show the reward or item discovered when relevant.
 - Give a short, useful next-step hint.
 - Use smooth entrance and exit animations.
+- Keep dismissed messages available in a message log opened by a “?” icon in the top-right corner, so players can review which messages belong to each level after clicking “OK” or pressing Enter.
+- Organize the message log by level and clearly identify the relevant task, result, reward or discovered item, and next-step hint.
 - Avoid interrupting movement or hiding important gameplay for too long.
 - Work consistently across the ground floor, first floor, and second floor.
 
