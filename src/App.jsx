@@ -398,8 +398,10 @@ function FloorSlab({ y, color }) {
 
 function ThreeStoreyStairs() {
   const lowerSteps = Array.from({ length: 10 }, (_, index) => {
-    const height = 0.35 + index * 0.47
-    return <mesh key={`lower-${index}`} position={[-8.4 + index * 0.5, -height / 2, 3.05]} castShadow><boxGeometry args={[0.52, height, 1.7]} /><meshStandardMaterial color={index % 2 ? '#3c2929' : '#5a3932'} roughness={0.95} /></mesh>
+    // Keep the underside level with the ground floor so each tread descends
+    // toward it, instead of leaving all of the tread tops at first-floor height.
+    const height = 4.58 - index * 0.47
+    return <mesh key={`lower-${index}`} position={[-8.4 + index * 0.5, -4.82 + height / 2, 3.05]} castShadow><boxGeometry args={[0.52, height, 1.7]} /><meshStandardMaterial color={index % 2 ? '#3c2929' : '#5a3932'} roughness={0.95} /></mesh>
   })
   const upperSteps = Array.from({ length: 10 }, (_, index) => {
     const height = 0.45 + index * 0.5
