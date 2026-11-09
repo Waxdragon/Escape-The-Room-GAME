@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Float, RoundedBox, Text } from '@react-three/drei'
+import { ContactShadows, Float, RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
 
 const HOTSPOTS = {
@@ -108,9 +108,8 @@ function MapMarker({ id, x, y, selected, discovered, onSelect }) {
   )
 }
 
-function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, onDeath, canDiscover = () => true, hauntedRoom = false, disabled = false }) {
+function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, canDiscover = () => true, hauntedRoom = false }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
-  const dead = useRef(false)
   const keys = useRef({})
   const blockedTarget = useRef(null)
   const nearbyTarget = useRef(null)
@@ -155,7 +154,6 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   }, [camera, gl])
 
   useFrame((_, delta) => {
-    if (disabled || dead.current) return
     const currentKeys = keys.current
     const forwardInput = (currentKeys.arrowup || currentKeys.w ? 1 : 0) - (currentKeys.arrowdown || currentKeys.s ? 1 : 0)
     const strafeInput = (currentKeys.arrowright || currentKeys.d ? 1 : 0) - (currentKeys.arrowleft || currentKeys.a ? 1 : 0)
@@ -185,26 +183,12 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
         targetHeight = player.current.y > 4 ? 6.65 : player.current.y < -2 ? -3.05 : 1.65
       }
       player.current.y = THREE.MathUtils.damp(player.current.y, targetHeight, 14, delta)
-      const fellFromUpperFloor = player.current.y > -1 && player.current.x < -3.7 && !lowerStairs && !upperStairs
-      if (fellFromUpperFloor) {
-        dead.current = true
-        onDeath?.('You stepped over the open edge and fell from the upper floor.')
-        return
-      }
     } else {
       player.current.y = 1.65
     }
 
     camera.position.set(player.current.x, player.current.y, player.current.z)
     const currentFloor = hauntedRoom ? (player.current.y < -1 ? 'Ground floor' : player.current.y > 4 ? 'Second floor' : 'First floor') : 'First floor'
-    if (hauntedRoom && currentFloor === 'First floor') {
-      const bitten = DOG_HAZARDS.some(({ position }) => Math.hypot(player.current.x - position[0], player.current.z - position[2]) < 1.05)
-      if (bitten) {
-        dead.current = true
-        onDeath?.('A chained dog lunged from the edge and bit you.')
-        return
-      }
-    }
     targets.forEach(({ id, position, radius = 1.45, floor }) => {
       if (floor && floor !== currentFloor) return
       const nearby = Math.hypot(player.current.x - position[0], player.current.z - position[1]) < radius
@@ -234,7 +218,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   return null
 }
 
-function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, onDiscover, onApproach, onLeave, canDiscover, onBlocked, onDeath, disabled, hasHammer, hammerSwing }) {
+function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, onDiscover, onApproach, onLeave, canDiscover, onBlocked, hasHammer, hammerSwing }) {
   const interactive = (id) => ({
     onClick: (event) => { event.stopPropagation(); onSelect(id) },
     onPointerOver: (event) => { event.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -261,8 +245,9 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
         <ExitDoor open={false} />
         <Plant />
         <BrokenObjects />
+        <StudyRats />
       </>}
-      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} onDeath={onDeath} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} disabled={disabled} />
+      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} />
       <HammerHand active={hauntedRoom && hasHammer} swing={hammerSwing} />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />
     </Canvas>
@@ -302,6 +287,99 @@ function HammerHand({ active, swing = 0 }) {
     <mesh position={[0, -0.1, 0]} renderOrder={20}><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
     <mesh position={[0, 0.22, 0]} renderOrder={20}><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} depthTest={false} /></mesh>
     <mesh position={[0, 0.22, 0.13]} renderOrder={20}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} depthTest={false} /></mesh>
+  </group>
+}
+
+function GunHand({ active, shot = 0 }) {
+  const gun = useRef()
+  const muzzle = useRef()
+  const lastShot = useRef(shot)
+  const shotStarted = useRef(-10)
+  const { camera } = useThree()
+  const basePosition = new THREE.Vector3(0.46, -0.38, -0.9)
+  const animatedPosition = useRef(basePosition.clone())
+
+  useFrame(({ clock }) => {
+    if (!gun.current) return
+    if (shot !== lastShot.current) {
+      lastShot.current = shot
+      shotStarted.current = clock.elapsedTime
+    }
+    const elapsed = clock.elapsedTime - shotStarted.current
+    const progress = shotStarted.current >= 0 && elapsed < 0.3 ? THREE.MathUtils.clamp(elapsed / 0.3, 0, 1) : 0
+    const recoil = Math.sin(progress * Math.PI)
+    animatedPosition.current.set(basePosition.x - recoil * 0.1, basePosition.y + recoil * 0.03, basePosition.z + recoil * 0.16)
+    gun.current.position.copy(camera.position).add(animatedPosition.current.clone().applyQuaternion(camera.quaternion))
+    gun.current.quaternion.copy(camera.quaternion)
+    gun.current.rotateX(-0.08 + recoil * 0.16)
+    gun.current.rotateY(-0.12)
+    gun.current.rotateZ(-0.28)
+    if (muzzle.current) muzzle.current.visible = progress > 0 && progress < 0.4
+  })
+
+  return <group ref={gun} visible={active} renderOrder={20}>
+    <mesh position={[0.08, -0.25, 0.08]} rotation={[0.1, 0, -0.18]} renderOrder={20}><boxGeometry args={[0.22, 0.56, 0.2]} /><meshStandardMaterial color="#4a2d28" roughness={0.8} depthTest={false} /></mesh>
+    <mesh position={[0, 0.12, 0]} renderOrder={20}><boxGeometry args={[0.16, 0.18, 0.82]} /><meshStandardMaterial color="#7d8789" metalness={0.9} roughness={0.2} depthTest={false} /></mesh>
+    <mesh position={[0, -0.04, -0.32]} renderOrder={20}><boxGeometry args={[0.24, 0.1, 0.2]} /><meshStandardMaterial color="#556063" metalness={0.8} roughness={0.22} depthTest={false} /></mesh>
+    <mesh position={[-0.12, -0.08, 0]} renderOrder={20}><sphereGeometry args={[0.18, 12, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
+    <mesh ref={muzzle} position={[0, 0.13, -0.48]} renderOrder={21}><coneGeometry args={[0.13, 0.3, 8]} /><meshBasicMaterial color="#ffd36b" transparent opacity={0.9} depthTest={false} /></mesh>
+  </group>
+}
+
+function GunPickup({ position }) {
+  const gun = useRef()
+  useFrame(({ clock }) => {
+    if (!gun.current) return
+    gun.current.position.y = position[1] + Math.sin(clock.elapsedTime * 2.1) * 0.12
+    gun.current.rotation.y = clock.elapsedTime * 1.5
+    gun.current.rotation.z = Math.sin(clock.elapsedTime * 1.4) * 0.08
+  })
+
+  return <group ref={gun} position={position}>
+    <mesh position={[0, 0, 0.35]} castShadow><boxGeometry args={[0.16, 0.18, 0.9]} /><meshStandardMaterial color="#858f91" metalness={0.9} roughness={0.2} /></mesh>
+    <mesh position={[0, -0.22, -0.18]} rotation={[0.12, 0, -0.18]} castShadow><boxGeometry args={[0.2, 0.52, 0.2]} /><meshStandardMaterial color="#51322b" roughness={0.8} /></mesh>
+    <mesh position={[0, 0.02, -0.18]}><boxGeometry args={[0.24, 0.12, 0.2]} /><meshStandardMaterial color="#5a6567" metalness={0.85} roughness={0.22} /></mesh>
+    <pointLight color="#e4b26d" intensity={1.5} distance={2.5} decay={2} />
+  </group>
+}
+
+function SecondFloorThreats({ defeated }) {
+  return <>
+    {defeated ? <>
+      <DeathStain position={[2.1, 5.19, -1.8]} />
+      <DeathStain position={[4.9, 5.19, 1.6]} scale={0.82} />
+      <DeadBody position={[2.1, 5.18, -1.8]} rotation={[0, 0.35, 0]} />
+      <DeadBody position={[4.9, 5.18, 1.6]} rotation={[0, -1.1, 0]} pale />
+    </> : <>
+      <ArmedFigure position={[2.1, 5.18, -1.8]} rotation={[0, 0.35, 0]} />
+      <ArmedFigure position={[4.9, 5.18, 1.6]} rotation={[0, -1.1, 0]} pale />
+    </>}
+  </>
+}
+
+function DeathStain({ position, scale = 1 }) {
+  return <group position={position} scale={scale}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.58, 24]} /><meshBasicMaterial color="#6f222b" transparent opacity={0.72} depthWrite={false} /></mesh>
+    {[[0.42, 0.2, 0.11], [-0.48, -0.14, 0.08], [0.2, -0.42, 0.07], [-0.18, 0.5, 0.06]].map(([x, z, radius]) => <mesh key={`${x}-${z}`} position={[x, 0.01, z]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[radius, 12]} /><meshBasicMaterial color="#8d2930" transparent opacity={0.78} depthWrite={false} /></mesh>)}
+  </group>
+}
+
+function ArmedFigure({ position, rotation = [0, 0, 0], pale = false }) {
+  const figure = useRef()
+  useFrame(({ clock }) => {
+    if (!figure.current) return
+    figure.current.position.y = position[1] + Math.sin(clock.elapsedTime * 1.4 + position[0]) * 0.025
+    figure.current.rotation.z = Math.sin(clock.elapsedTime * 1.2 + position[2]) * 0.035
+  })
+  const cloth = pale ? '#747887' : '#272129'
+  return <group ref={figure} position={position} rotation={rotation}>
+    <mesh position={[0, 1.1, 0]} castShadow><boxGeometry args={[0.6, 1.45, 0.34]} /><meshStandardMaterial color={cloth} roughness={0.98} /></mesh>
+    <mesh position={[0, 2.05, 0]} castShadow><sphereGeometry args={[0.29, 14, 10]} /><meshStandardMaterial color={pale ? '#9b9291' : '#4a3d43'} roughness={0.98} /></mesh>
+    <mesh position={[0.44, 1.1, -0.05]} rotation={[0, 0.2, -0.25]} castShadow><boxGeometry args={[0.13, 1.1, 0.13]} /><meshStandardMaterial color={cloth} roughness={0.98} /></mesh>
+    <mesh position={[-0.44, 1.1, 0.05]} rotation={[0, 0.1, 0.25]} castShadow><boxGeometry args={[0.13, 1.1, 0.13]} /><meshStandardMaterial color={cloth} roughness={0.98} /></mesh>
+    <mesh position={[0.5, 1.15, -0.2]} rotation={[Math.PI / 2, 0, 0.05]}><boxGeometry args={[0.1, 0.1, 0.9]} /><meshStandardMaterial color="#6c777a" metalness={0.8} roughness={0.25} /></mesh>
+    <mesh position={[-0.18, 0.38, 0]} castShadow><boxGeometry args={[0.18, 0.75, 0.18]} /><meshStandardMaterial color="#19171d" /></mesh>
+    <mesh position={[0.18, 0.38, 0]} castShadow><boxGeometry args={[0.18, 0.75, 0.18]} /><meshStandardMaterial color="#19171d" /></mesh>
   </group>
 }
 
@@ -775,6 +853,66 @@ function WallSconce({ position, color, phase = 0, unstable = false }) {
   </group>
 }
 
+function StudyRats() {
+  return <>
+    <Rat path={[[-5.15, -2.45], [-4.05, -2.45], [-4.05, -1.1], [-5.15, -1.1]]} phase={0.2} speed={0.55} scale={0.9} />
+    <Rat path={[[3.1, -4.35], [5.6, -4.35], [5.6, -2.75], [3.1, -2.75]]} phase={1.8} speed={0.48} scale={0.82} />
+    <Rat path={[[-1.35, 3.9], [0.7, 3.9], [0.7, 4.55], [-1.35, 4.55]]} phase={3.1} speed={0.62} scale={0.72} />
+  </>
+}
+
+function Rat({ path, phase = 0, speed = 0.5, scale = 1 }) {
+  const rat = useRef()
+
+  useFrame(({ clock }) => {
+    if (!rat.current || path.length < 2) return
+    const routePosition = (clock.elapsedTime * speed + phase) % path.length
+    const segment = Math.floor(routePosition)
+    const progress = routePosition - segment
+    const from = path[segment]
+    const to = path[(segment + 1) % path.length]
+    const x = THREE.MathUtils.lerp(from[0], to[0], progress)
+    const z = THREE.MathUtils.lerp(from[1], to[1], progress)
+    rat.current.position.set(x, -0.1 + Math.abs(Math.sin(clock.elapsedTime * 10 + phase)) * 0.018, z)
+    rat.current.rotation.y = Math.atan2(to[0] - from[0], to[1] - from[1])
+  })
+
+  return <group ref={rat} position={[path[0][0], -0.1, path[0][1]]} scale={scale}>
+    <mesh position={[0, 0.2, 0]} castShadow>
+      <sphereGeometry args={[0.28, 12, 8]} />
+      <meshStandardMaterial color="#473832" roughness={0.95} />
+    </mesh>
+    <mesh position={[0, 0.24, 0.32]} castShadow>
+      <sphereGeometry args={[0.19, 12, 8]} />
+      <meshStandardMaterial color="#59423a" roughness={0.95} />
+    </mesh>
+    {[-0.12, 0.12].map((x) => <mesh key={`ear-${x}`} position={[x, 0.41, 0.3]} castShadow>
+      <sphereGeometry args={[0.09, 10, 8]} />
+      <meshStandardMaterial color="#82574d" roughness={0.9} />
+    </mesh>)}
+    {[-0.07, 0.07].map((x) => <mesh key={`eye-${x}`} position={[x, 0.27, 0.49]}>
+      <sphereGeometry args={[0.026, 8, 8]} />
+      <meshBasicMaterial color="#ef7668" />
+    </mesh>)}
+    <mesh position={[0, 0.23, 0.51]}>
+      <sphereGeometry args={[0.04, 8, 8]} />
+      <meshStandardMaterial color="#c67b70" roughness={0.85} />
+    </mesh>
+    {[-0.14, 0.14].map((x) => <mesh key={`front-leg-${x}`} position={[x, 0.06, 0.18]} castShadow>
+      <boxGeometry args={[0.07, 0.18, 0.12]} />
+      <meshStandardMaterial color="#382c2b" roughness={1} />
+    </mesh>)}
+    {[-0.14, 0.14].map((x) => <mesh key={`back-leg-${x}`} position={[x, 0.06, -0.18]} castShadow>
+      <boxGeometry args={[0.07, 0.18, 0.12]} />
+      <meshStandardMaterial color="#382c2b" roughness={1} />
+    </mesh>)}
+    <mesh position={[0, 0.18, -0.36]} rotation={[Math.PI / 2, 0.18, 0]}>
+      <cylinderGeometry args={[0.025, 0.018, 0.68, 8]} />
+      <meshStandardMaterial color="#a96e66" roughness={0.9} />
+    </mesh>
+  </group>
+}
+
 function BrokenObjects() {
   return <>
     <BrokenMirror />
@@ -975,6 +1113,20 @@ function Chest({ opened, selected, ...props }) {
   </group>
 }
 
+function SealedLabel({ position }) {
+  const patterns = {
+    S: ['11111', '10000', '10000', '11110', '00001', '00001', '11110'],
+    E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+    A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+    L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+    D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+  }
+  const cell = 0.05
+  return <group position={position} rotation={[0, -Math.PI / 2, 0]}>
+    {'SEALED'.split('').map((letter, letterIndex) => patterns[letter].map((row, rowIndex) => row.split('').map((filled, columnIndex) => filled === '1' && <mesh key={`${letterIndex}-${rowIndex}-${columnIndex}`} position={[(letterIndex * 6 + columnIndex - 17.5) * cell, (3 - rowIndex) * cell, 0]}><boxGeometry args={[cell * 0.82, cell * 0.82, 0.035]} /><meshStandardMaterial color="#e18b72" emissive="#64262d" emissiveIntensity={0.8} /></mesh>)))}
+  </group>
+}
+
 function ExitDoor({ open, ...props }) {
   return <group position={[6.72, 2.1, -1.9]} {...props}>
     <mesh castShadow><boxGeometry args={[0.22, 4.3, 2.45]} /><meshStandardMaterial color="#52382f" roughness={0.7} /></mesh>
@@ -983,11 +1135,12 @@ function ExitDoor({ open, ...props }) {
       <mesh position={[-0.07, -0.18, 0.72]}><sphereGeometry args={[0.09, 16, 16]} /><meshStandardMaterial color="#d5a956" metalness={0.7} /></mesh>
       {!open && <>
         <mesh position={[-0.23, 0.2, 0]}><boxGeometry args={[0.12, 0.16, 2.05]} /><meshStandardMaterial color="#2a302f" metalness={0.25} roughness={0.8} /></mesh>
-        <mesh position={[-0.23, 0.2, 0.08]}><boxGeometry args={[0.16, 0.92, 0.08]} /><meshStandardMaterial color="#6d3030" metalness={0.45} roughness={0.5} /></mesh>
-        <mesh position={[-0.23, 0.2, -0.08]}><boxGeometry args={[0.16, 0.92, 0.08]} /><meshStandardMaterial color="#6d3030" metalness={0.45} roughness={0.5} /></mesh>
-        <mesh position={[-0.23, 0.05, 0.15]}><torusGeometry args={[0.16, 0.045, 10, 18]} /><meshStandardMaterial color="#c75d4d" emissive="#5c1b22" emissiveIntensity={0.45} metalness={0.5} roughness={0.3} /></mesh>
-        <mesh position={[-0.23, -0.13, 0.15]}><boxGeometry args={[0.24, 0.24, 0.12]} /><meshStandardMaterial color="#c75d4d" emissive="#5c1b22" emissiveIntensity={0.45} metalness={0.5} roughness={0.3} /></mesh>
-        <Text position={[-0.23, 0.9, 0.13]} fontSize={0.28} color="#e18b72" anchorX="center" anchorY="middle" rotation={[0, 0, 0]}>SEALED</Text>
+        <mesh position={[-0.23, -0.42, 0]}><boxGeometry args={[0.12, 0.16, 2.05]} /><meshStandardMaterial color="#2a302f" metalness={0.25} roughness={0.8} /></mesh>
+        <group position={[-0.23, -0.05, 0.28]} rotation={[0, -Math.PI / 2, 0]}>
+          <mesh><torusGeometry args={[0.16, 0.045, 10, 18]} /><meshStandardMaterial color="#d5a956" emissive="#6b4829" emissiveIntensity={0.45} metalness={0.75} roughness={0.25} /></mesh>
+          <mesh position={[0, -0.16, 0]}><boxGeometry args={[0.12, 0.24, 0.24]} /><meshStandardMaterial color="#d5a956" emissive="#6b4829" emissiveIntensity={0.45} metalness={0.75} roughness={0.25} /></mesh>
+        </group>
+        <SealedLabel position={[-0.23, 0.9, 0.13]} />
       </>}
     </group>
     {open && <pointLight position={[-0.3, 1.5, 0]} color="#ffbb66" intensity={8} distance={4} />}
@@ -1025,7 +1178,6 @@ function App() {
   const [hauntedRoom, setHauntedRoom] = useState(false)
   const [gameWon, setGameWon] = useState(false)
   const [showWinBanner, setShowWinBanner] = useState(false)
-  const [gameOver, setGameOver] = useState(false)
   const [nearbyTask, setNearbyTask] = useState(null)
   const [hasHammer, setHasHammer] = useState(false)
   const [hammerSwing, setHammerSwing] = useState(0)
@@ -1108,7 +1260,7 @@ function App() {
   }
 
   const completeTask = (id) => {
-    if (gameOver || !hauntedRoom || nearbyTask !== id || found.includes(id) || (id === 'hammer' && hasHammer) || !isTaskUnlocked(id)) return
+    if (!hauntedRoom || nearbyTask !== id || found.includes(id) || (id === 'hammer' && hasHammer) || !isTaskUnlocked(id)) return
     if (id === 'hammer') {
       setHasHammer(true)
       setNearbyTask(null)
@@ -1131,27 +1283,6 @@ function App() {
     if (task.requiresHammer) setHammerSwing((count) => count + 1)
     setNearbyTask(null)
     setMessage(`${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.`)
-  }
-
-  const handleDeath = (reason) => {
-    if (gameOver || gameWon) return
-    setGameOver(true)
-    setShowWinBanner(false)
-    setRoomComplete(false)
-    setNearbyTask(null)
-    setMessage(`${reason} GAME OVER. Returning to the beginning room...`)
-    window.setTimeout(() => {
-      setHauntedRoom(false)
-      setFound([])
-      setSelected('painting')
-      setGameWon(false)
-      setHasHammer(false)
-      setHammerSwing(0)
-      setGems(0)
-      setSeconds(18 * 60 + 42)
-      setGameOver(false)
-      setMessage('The exit is sealed. Find the portrait, desk and chest to open the next room.')
-    }, 2600)
   }
 
   const onBlocked = (id) => {
@@ -1196,7 +1327,7 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hammerSwing={hammerSwing} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} onDeath={handleDeath} disabled={gameOver} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{gameOver && <div className="win-banner game-over-banner"><span className="win-icon">☠</span><div><p>GAME OVER</p><strong>The house is pulling you back to the beginning…</strong></div><span className="round-loader">● ● ●</span></div>}</div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hammerSwing={hammerSwing} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}</div>
         <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'The exit is sealed. Find the portrait, desk and chest to open the next chamber.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
