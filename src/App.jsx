@@ -11,6 +11,8 @@ const HOTSPOTS = {
   door: { label: 'The exit door', short: 'Exit', location: 'South-east wall', icon: '↗' },
   key: { label: 'The last key', short: 'Last key', location: 'Haunted chamber', icon: '⚿' },
   hammer: { label: 'The iron hammer', short: 'Hammer', location: 'First floor', icon: '⚒' },
+  bag: { label: 'The rat-catching bag', short: 'Rat bag', location: 'First floor', icon: '▱' },
+  rats: { label: 'The wandering rats', short: 'Rats', location: 'First floor', icon: '♧' },
   haunted: { label: 'The haunted chamber', short: 'Chamber', location: 'Beyond the study', icon: '☩' },
   cross: { label: 'The Christian cross', short: 'Cross', location: 'First floor', icon: '☩' },
   weapons: { label: 'The weapons rack', short: 'Weapons', location: 'First floor', icon: '⚔' },
@@ -29,6 +31,14 @@ const ROOM_TASKS = [
   { id: 'painting', floor: 'First floor', text: 'Inspect the brass portrait' },
   { id: 'desk', floor: 'First floor', text: 'Search the writing desk' },
   { id: 'chest', floor: 'First floor', text: 'Open the ironbound chest' },
+  { id: 'bag', floor: 'First floor', text: 'Pick up the rat-catching bag' },
+  { id: 'rats', floor: 'First floor', text: 'Catch the wandering rats' },
+]
+const BAG_TARGET = { id: 'bag', floor: 'First floor', position: [-4.7, 2.4], radius: 0.9 }
+const RAT_TARGET = { id: 'rats', floor: 'First floor', position: [-4.8, 2.8], radius: 1.2 }
+const SPECIAL_TASKS = [
+  { id: 'bag', text: 'Pick up the rat-catching bag', action: 'Pick up the bag' },
+  { id: 'rats', text: 'Catch the wandering rats', action: 'Catch the rats' },
 ]
 const HAUNTED_TASKS = [
   { id: 'cross', floor: 'First floor', text: 'Press the hidden button', action: 'Press the hidden button', actionText: 'A panel opens behind the cross and reveals a crimson gem.', reward: 1, requiresHammer: true, position: [0, -6.1], radius: 0.9 },
@@ -39,6 +49,10 @@ const HAUNTED_TASKS = [
   { id: 'secondCross', floor: 'Second floor', text: 'Break the stone panel', action: 'Break the stone panel', actionText: 'Behind the inscription is a final white gem.', reward: 1, requiresHammer: true, position: [5.2, -6.1], radius: 0.9 },
 ]
 const HAMMER_TARGET = { id: 'hammer', floor: 'First floor', position: [2.8, -1.55], radius: 0.9 }
+const DOG_HAZARDS = [
+  { position: [-1.6, 0.18, 5.85], anchor: [-1.6, 0.18, 6.75], phase: 0.4 },
+  { position: [7.8, 0.18, 5.85], anchor: [7.8, 0.18, 6.75], phase: 1.8 },
+]
 const GEM_REQUIREMENT = 6
 const GEM_POSITIONS = {
   cross: [0, 2.05, -6.48],
@@ -104,8 +118,9 @@ function MapMarker({ id, x, y, selected, discovered, onSelect }) {
   )
 }
 
-function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, canDiscover = () => true, hauntedRoom = false }) {
+function FirstPersonController({ targets, found, collected = [], manualTargets = [], onDiscover, onApproach, onLeave, onBlocked, onDeath, canDiscover = () => true, hauntedRoom = false, disabled = false }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
+  const dead = useRef(false)
   const keys = useRef({})
   const blockedTarget = useRef(null)
   const nearbyTarget = useRef(null)
@@ -150,6 +165,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   }, [camera, gl])
 
   useFrame((_, delta) => {
+    if (disabled || dead.current) return
     const currentKeys = keys.current
     const forwardInput = (currentKeys.arrowup || currentKeys.w ? 1 : 0) - (currentKeys.arrowdown || currentKeys.s ? 1 : 0)
     const strafeInput = (currentKeys.arrowright || currentKeys.d ? 1 : 0) - (currentKeys.arrowleft || currentKeys.a ? 1 : 0)
@@ -179,12 +195,26 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
         targetHeight = player.current.y > 4 ? 6.65 : player.current.y < -2 ? -3.05 : 1.65
       }
       player.current.y = THREE.MathUtils.damp(player.current.y, targetHeight, 14, delta)
+      const fellFromUpperFloor = player.current.y > -1 && player.current.x < -3.7 && !lowerStairs && !upperStairs
+      if (fellFromUpperFloor) {
+        dead.current = true
+        onDeath?.('You stepped over the open edge and fell from the upper floor.')
+        return
+      }
     } else {
       player.current.y = 1.65
     }
 
     camera.position.set(player.current.x, player.current.y, player.current.z)
     const currentFloor = hauntedRoom ? (player.current.y < -1 ? 'Ground floor' : player.current.y > 4 ? 'Second floor' : 'First floor') : 'First floor'
+    if (hauntedRoom && currentFloor === 'First floor') {
+      const bitten = DOG_HAZARDS.some(({ position }) => Math.hypot(player.current.x - position[0], player.current.z - position[2]) < 1.05)
+      if (bitten) {
+        dead.current = true
+        onDeath?.('A chained dog lunged from the edge and bit you.')
+        return
+      }
+    }
     targets.forEach(({ id, position, radius = 1.45, floor }) => {
       if (floor && floor !== currentFloor) return
       const nearby = Math.hypot(player.current.x - position[0], player.current.z - position[1]) < radius
@@ -201,7 +231,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
         blockedTarget.current = null
         if (nearbyTarget.current !== id) {
           nearbyTarget.current = id
-          if (hauntedRoom) onApproach?.(id)
+          if (hauntedRoom || manualTargets.includes(id)) onApproach?.(id)
           else onDiscover(id)
         }
       } else if (blockedTarget.current !== id) {
@@ -214,7 +244,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   return null
 }
 
-function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, onDiscover, onApproach, onLeave, canDiscover, onBlocked, hasHammer, hammerSwing }) {
+function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, manualTargets, onDiscover, onApproach, onLeave, canDiscover, onBlocked, onDeath, disabled, hasHammer, hammerSwing, hasBag, catchAction }) {
   const interactive = (id) => ({
     onClick: (event) => { event.stopPropagation(); onSelect(id) },
     onPointerOver: (event) => { event.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -238,14 +268,18 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
         <Painting {...interactive('painting')} selected={selected === 'painting'} />
         <Desk {...interactive('desk')} selected={selected === 'desk'} />
         <Chest {...interactive('chest')} opened={chestOpened} selected={selected === 'chest'} />
-        <ExitDoor {...interactive('door')} open />
+        <ExitDoor open={false} />
         <Plant />
         <BrokenObjects />
-        <WanderingRat path={[[-4.8, 2.8], [-2.4, 2.8], [-1.2, 0.8], [-3.5, -0.5]]} speed={0.48} phase={0.2} />
-        <WanderingRat path={[[4.8, 2.8], [2.6, 1.9], [3.2, -0.8], [5.4, -2.5]]} speed={0.34} phase={1.8} scale={0.82} />
+        {!hasBag && <InvestigationBag position={[BAG_TARGET.position[0], 0.42, BAG_TARGET.position[1]]} />}
+        {!found.includes('rats') && <>
+          <WanderingRat path={[[-4.8, 2.8], [-2.4, 2.8], [-1.2, 0.8], [-3.5, -0.5]]} speed={0.48} phase={0.2} />
+          <WanderingRat path={[[4.8, 2.8], [2.6, 1.9], [3.2, -0.8], [5.4, -2.5]]} speed={0.34} phase={1.8} scale={0.82} />
+        </>}
       </>}
-      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} />
+      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} manualTargets={manualTargets} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} onDeath={onDeath} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} disabled={disabled} />
       <HammerHand active={hauntedRoom && hasHammer} swing={hammerSwing} />
+      <BagHand active={!hauntedRoom && hasBag} catchAction={catchAction} />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />
     </Canvas>
   )
@@ -256,14 +290,9 @@ function HammerHand({ active, swing = 0 }) {
   const lastSwing = useRef(swing)
   const swingStarted = useRef(-10)
   const { camera } = useThree()
-  const basePosition = [0.5, -0.42, -0.92]
+  const basePosition = new THREE.Vector3(0.5, -0.42, -0.92)
   const baseRotation = [0.16, -0.16, -0.3]
-
-  useEffect(() => {
-    if (!hand.current) return undefined
-    camera.add(hand.current)
-    return () => camera.remove(hand.current)
-  }, [camera])
+  const animatedPosition = useRef(basePosition.clone())
 
   useFrame(({ clock }) => {
     if (!hand.current) return
@@ -275,15 +304,67 @@ function HammerHand({ active, swing = 0 }) {
     const progress = swingStarted.current >= 0 && elapsedSinceSwing < 0.62 ? THREE.MathUtils.clamp(elapsedSinceSwing / 0.62, 0, 1) : 0
     const windup = THREE.MathUtils.clamp(progress / 0.28, 0, 1)
     const hit = progress < 0.28 ? 0 : 1 - THREE.MathUtils.clamp((progress - 0.28) / 0.5, 0, 1)
-    hand.current.position.set(basePosition[0] - windup * 0.13 + hit * 0.16, basePosition[1] + windup * 0.18 - hit * 0.2, basePosition[2] + windup * 0.08 + hit * 0.12)
-    hand.current.rotation.set(baseRotation[0] - windup * 0.35 + hit * 0.55, baseRotation[1] + windup * 0.18, baseRotation[2] + windup * 0.55 - hit * 2.4)
+    animatedPosition.current.set(basePosition.x - windup * 0.13 + hit * 0.16, basePosition.y + windup * 0.18 - hit * 0.2, basePosition.z + windup * 0.08 + hit * 0.12)
+    const offset = animatedPosition.current.clone().applyQuaternion(camera.quaternion)
+    hand.current.position.copy(camera.position).add(offset)
+    hand.current.quaternion.copy(camera.quaternion)
+    hand.current.rotateX(baseRotation[0] - windup * 0.35 + hit * 0.55)
+    hand.current.rotateY(baseRotation[1] + windup * 0.18)
+    hand.current.rotateZ(baseRotation[2] + windup * 0.55 - hit * 2.4)
   })
 
-  return <group ref={hand} visible={active} position={basePosition} rotation={baseRotation}>
-    <mesh position={[0.08, -0.43, 0.08]} rotation={[0.26, 0, -0.2]} castShadow><cylinderGeometry args={[0.15, 0.18, 0.92, 10]} /><meshStandardMaterial color="#6f4638" roughness={0.8} /></mesh>
-    <mesh position={[0, -0.1, 0]} castShadow><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} /></mesh>
-    <mesh position={[0, 0.22, 0]} castShadow><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} /></mesh>
-    <mesh position={[0, 0.22, 0.13]}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} /></mesh>
+  return <group ref={hand} visible={active} renderOrder={20}>
+    <mesh position={[0.08, -0.43, 0.08]} rotation={[0.26, 0, -0.2]} renderOrder={20}><cylinderGeometry args={[0.15, 0.18, 0.92, 10]} /><meshStandardMaterial color="#6f4638" roughness={0.8} depthTest={false} /></mesh>
+    <mesh position={[0, -0.1, 0]} renderOrder={20}><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
+    <mesh position={[0, 0.22, 0]} renderOrder={20}><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} depthTest={false} /></mesh>
+    <mesh position={[0, 0.22, 0.13]} renderOrder={20}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} depthTest={false} /></mesh>
+  </group>
+}
+
+function BagHand({ active, catchAction = 0 }) {
+  const bag = useRef()
+  const lastAction = useRef(catchAction)
+  const actionStarted = useRef(-10)
+  const { camera } = useThree()
+  const basePosition = new THREE.Vector3(-0.42, -0.36, -0.82)
+  const animatedPosition = useRef(basePosition.clone())
+
+  useFrame(({ clock }) => {
+    if (!bag.current) return
+    if (catchAction !== lastAction.current) {
+      lastAction.current = catchAction
+      actionStarted.current = clock.elapsedTime
+    }
+    const elapsed = clock.elapsedTime - actionStarted.current
+    const progress = actionStarted.current >= 0 && elapsed < 0.5 ? THREE.MathUtils.clamp(elapsed / 0.5, 0, 1) : 0
+    const reach = Math.sin(progress * Math.PI)
+    animatedPosition.current.set(basePosition.x + reach * 0.18, basePosition.y - reach * 0.12, basePosition.z + reach * 0.2)
+    bag.current.position.copy(camera.position).add(animatedPosition.current.clone().applyQuaternion(camera.quaternion))
+    bag.current.quaternion.copy(camera.quaternion)
+    bag.current.rotateX(reach * 0.25)
+    bag.current.rotateY(-0.12)
+  })
+
+  return <group ref={bag} visible={active} renderOrder={20}>
+    <mesh position={[0, -0.08, 0]} renderOrder={20}><sphereGeometry args={[0.28, 14, 12]} /><meshStandardMaterial color="#87634b" roughness={0.95} depthTest={false} /></mesh>
+    <mesh position={[0, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} renderOrder={20}><torusGeometry args={[0.18, 0.035, 8, 16]} /><meshStandardMaterial color="#b79263" metalness={0.35} roughness={0.6} depthTest={false} /></mesh>
+    <mesh position={[0, 0.25, 0]} renderOrder={20}><cylinderGeometry args={[0.2, 0.27, 0.12, 14]} /><meshStandardMaterial color="#6a493a" roughness={0.95} depthTest={false} /></mesh>
+  </group>
+}
+
+function InvestigationBag({ position }) {
+  const bag = useRef()
+  useFrame(({ clock }) => {
+    if (!bag.current) return
+    bag.current.position.y = position[1] + Math.sin(clock.elapsedTime * 2.2) * 0.1
+    bag.current.rotation.y = clock.elapsedTime * 1.2
+  })
+
+  return <group ref={bag} position={position}>
+    <mesh position={[0, -0.16, 0]} castShadow><sphereGeometry args={[0.38, 16, 12]} /><meshStandardMaterial color="#87634b" roughness={0.95} /></mesh>
+    <mesh position={[0, 0.18, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><torusGeometry args={[0.25, 0.045, 8, 16]} /><meshStandardMaterial color="#b79263" metalness={0.35} roughness={0.6} /></mesh>
+    <mesh position={[0, 0.28, 0]} castShadow><cylinderGeometry args={[0.28, 0.35, 0.14, 14]} /><meshStandardMaterial color="#6a493a" roughness={0.95} /></mesh>
+    <pointLight color="#e9b26d" intensity={1.3} distance={2.4} decay={2} />
   </group>
 }
 
@@ -384,6 +465,7 @@ function HauntedRoomContents({ found, hasHammer }) {
     <HauntedRoomShell />
     <ThreeStoreyStairs />
     <HauntedLighting />
+    <HauntedCreatures />
     <HauntedRoomProps found={found} />
     {!hasHammer && <HauntedHammer position={[HAMMER_TARGET.position[0], 1.45, HAMMER_TARGET.position[1]]} />}
     <HiddenKeyCabinet position={[7.2, 5.18, -4.6]} />
@@ -406,6 +488,91 @@ function HauntedHammer({ position }) {
     <mesh position={[0, -0.28, 0]} rotation={[0.1, 0, -0.1]} castShadow><cylinderGeometry args={[0.1, 0.13, 0.72, 12]} /><meshStandardMaterial color="#704637" roughness={0.75} /></mesh>
     <mesh position={[0, 0.16, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><boxGeometry args={[0.72, 0.24, 0.22]} /><meshStandardMaterial color="#9ba5a7" emissive="#39484e" emissiveIntensity={0.35} metalness={0.85} roughness={0.2} /></mesh>
     <pointLight color="#a5e7ff" intensity={1.5} distance={2.7} decay={2} />
+  </group>
+}
+
+function HauntedCreatures() {
+  return <>
+    <HauntedBat position={[-5.8, -2.1, -0.8]} phase={0.2} />
+    <HauntedBat position={[5.8, -1.3, 2.8]} phase={1.7} scale={0.8} />
+    <HauntedBat position={[-4.2, 2.75, 2.1]} phase={2.5} scale={0.9} />
+    <HauntedBat position={[6.2, 3.4, -1.5]} phase={3.8} scale={0.78} />
+    <HauntedBat position={[-5.2, 7.35, -1.2]} phase={1.1} scale={0.85} />
+    <HauntedBat position={[5.6, 7.9, 2.6]} phase={4.3} scale={0.72} />
+    <HauntedRat floorY={-4.82} path={[[-7.2, -5.3], [-4.7, -5.3], [-3.8, -3.8], [-6.5, -3.7]]} speed={0.42} phase={0.4} />
+    <HauntedRat floorY={0.02} path={[[-5.9, 4.8], [-3.8, 4.8], [-3.8, 2.2], [-6.8, 2.2]]} speed={0.36} phase={1.2} scale={0.9} />
+    <HauntedRat floorY={5.02} path={[[-6.4, -5.5], [-4.2, -5.5], [-3.8, -3.9], [-6.8, -3.9]]} speed={0.31} phase={2.1} scale={0.82} />
+    {DOG_HAZARDS.map((dog, index) => <GuardDog key={`dog-${index}`} {...dog} />)}
+  </>
+}
+
+function HauntedBat({ position, phase = 0, scale = 1 }) {
+  const bat = useRef()
+  const leftWing = useRef()
+  const rightWing = useRef()
+
+  useFrame(({ clock }) => {
+    if (!bat.current) return
+    const t = clock.elapsedTime + phase
+    bat.current.position.set(position[0] + Math.sin(t * 0.7) * 1.7, position[1] + Math.sin(t * 1.8) * 0.35, position[2] + Math.cos(t * 0.9) * 1.2)
+    bat.current.rotation.y = Math.sin(t * 0.7) * 0.45
+    const flap = Math.sin(t * 9) * 0.55
+    if (leftWing.current) leftWing.current.rotation.z = 0.35 + flap
+    if (rightWing.current) rightWing.current.rotation.z = -0.35 - flap
+  })
+
+  return <group ref={bat} position={position} scale={scale}>
+    <mesh castShadow><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#17131c" roughness={0.95} /></mesh>
+    <mesh position={[0, -0.16, 0.04]}><coneGeometry args={[0.1, 0.28, 6]} /><meshStandardMaterial color="#241926" roughness={0.95} /></mesh>
+    <mesh ref={leftWing} position={[-0.36, 0, 0]} rotation={[0, 0, 0.35]} castShadow><boxGeometry args={[0.7, 0.035, 0.32]} /><meshStandardMaterial color="#2c1d30" roughness={0.9} /></mesh>
+    <mesh ref={rightWing} position={[0.36, 0, 0]} rotation={[0, 0, -0.35]} castShadow><boxGeometry args={[0.7, 0.035, 0.32]} /><meshStandardMaterial color="#2c1d30" roughness={0.9} /></mesh>
+    <mesh position={[-0.07, 0.03, 0.16]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#d87967" /></mesh>
+    <mesh position={[0.07, 0.03, 0.16]}><sphereGeometry args={[0.025, 8, 8]} /><meshBasicMaterial color="#d87967" /></mesh>
+  </group>
+}
+
+function HauntedRat({ floorY, path, speed = 0.4, phase = 0, scale = 1 }) {
+  const rat = useRef()
+  useFrame(({ clock }) => {
+    if (!rat.current) return
+    const progress = (clock.elapsedTime * speed + phase) % path.length
+    const index = Math.floor(progress)
+    const blend = progress - index
+    const current = path[index]
+    const next = path[(index + 1) % path.length]
+    rat.current.position.set(THREE.MathUtils.lerp(current[0], next[0], blend), floorY + 0.2 + Math.sin(clock.elapsedTime * 10 + phase) * 0.025, THREE.MathUtils.lerp(current[1], next[1], blend))
+    rat.current.rotation.y = Math.atan2(next[0] - current[0], next[1] - current[1])
+  })
+
+  return <group ref={rat} scale={scale}>
+    <mesh position={[0, 0.12, 0]} castShadow><sphereGeometry args={[0.22, 12, 9]} /><meshStandardMaterial color="#2d292d" roughness={0.98} /></mesh>
+    <mesh position={[0, 0.15, 0.25]} castShadow><sphereGeometry args={[0.15, 12, 9]} /><meshStandardMaterial color="#40353a" roughness={0.98} /></mesh>
+    <mesh position={[-0.1, 0.27, 0.27]}><sphereGeometry args={[0.055, 9, 7]} /><meshStandardMaterial color="#754c5e" /></mesh>
+    <mesh position={[0.1, 0.27, 0.27]}><sphereGeometry args={[0.055, 9, 7]} /><meshStandardMaterial color="#754c5e" /></mesh>
+    <mesh position={[-0.055, 0.18, 0.39]}><sphereGeometry args={[0.022, 7, 7]} /><meshBasicMaterial color="#e4bd76" /></mesh>
+    <mesh position={[0.055, 0.18, 0.39]}><sphereGeometry args={[0.022, 7, 7]} /><meshBasicMaterial color="#e4bd76" /></mesh>
+    <mesh position={[0, 0.08, -0.35]} rotation={[0.2, 0, 0.45]}><boxGeometry args={[0.05, 0.05, 0.8]} /><meshStandardMaterial color="#674753" roughness={0.95} /></mesh>
+  </group>
+}
+
+function GuardDog({ position, phase = 0 }) {
+  const dog = useRef()
+  useFrame(({ clock }) => {
+    if (!dog.current) return
+    dog.current.rotation.y = Math.sin(clock.elapsedTime * 0.8 + phase) * 0.16
+    dog.current.position.y = position[1] + Math.abs(Math.sin(clock.elapsedTime * 1.7 + phase)) * 0.025
+  })
+
+  return <group ref={dog} position={position}>
+    <mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[0.85, 0.55, 1.18]} /><meshStandardMaterial color="#3a2529" roughness={0.92} /></mesh>
+    <mesh position={[0, 0.62, 0.68]} castShadow><boxGeometry args={[0.52, 0.48, 0.48]} /><meshStandardMaterial color="#4a2b30" roughness={0.9} /></mesh>
+    <mesh position={[0, 0.58, 0.95]}><boxGeometry args={[0.25, 0.12, 0.12]} /><meshStandardMaterial color="#b44e47" emissive="#571b24" emissiveIntensity={0.45} /></mesh>
+    <mesh position={[-0.18, 0.9, 0.72]} rotation={[0, 0, -0.35]}><coneGeometry args={[0.13, 0.3, 4]} /><meshStandardMaterial color="#2a1c22" /></mesh>
+    <mesh position={[0.18, 0.9, 0.72]} rotation={[0, 0, 0.35]}><coneGeometry args={[0.13, 0.3, 4]} /><meshStandardMaterial color="#2a1c22" /></mesh>
+    {[-0.27, 0.27].map((x) => <mesh key={`front-leg-${x}`} position={[x, 0.16, 0.32]} castShadow><boxGeometry args={[0.14, 0.62, 0.16]} /><meshStandardMaterial color="#302127" /></mesh>)}
+    {[-0.27, 0.27].map((x) => <mesh key={`back-leg-${x}`} position={[x, 0.16, -0.34]} castShadow><boxGeometry args={[0.14, 0.62, 0.16]} /><meshStandardMaterial color="#302127" /></mesh>)}
+    <mesh position={[0, 0.76, 0.4]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.22, 0.035, 8, 16]} /><meshStandardMaterial color="#b66c51" metalness={0.55} roughness={0.35} /></mesh>
+    <mesh position={[0, 0.52, 0.54]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.035, 0.035, 0.92, 8]} /><meshStandardMaterial color="#8d756a" roughness={0.85} /></mesh>
   </group>
 }
 
@@ -936,6 +1103,7 @@ function ExitDoor({ open, ...props }) {
     <group position={[-0.13, 0.18, 0]} rotation={[0, open ? -1.15 : 0, 0]}>
       <mesh castShadow><boxGeometry args={[0.08, 3.7, 1.92]} /><meshStandardMaterial color={open ? '#b98b50' : '#3c4b45'} emissive={open ? '#8c572d' : '#000000'} emissiveIntensity={open ? 0.65 : 0} /></mesh>
       <mesh position={[-0.07, -0.18, 0.72]}><sphereGeometry args={[0.09, 16, 16]} /><meshStandardMaterial color="#d5a956" metalness={0.7} /></mesh>
+      {!open && <mesh position={[-0.23, 0.2, 0]}><boxGeometry args={[0.12, 0.16, 2.05]} /><meshStandardMaterial color="#2a302f" metalness={0.25} roughness={0.8} /></mesh>}
     </group>
     {open && <pointLight position={[-0.3, 1.5, 0]} color="#ffbb66" intensity={8} distance={4} />}
   </group>
@@ -956,6 +1124,8 @@ const CLUES = {
   door: { title: 'The exit', text: 'A heavy door with a keyhole shaped like a crescent moon. There is no handle on this side.', action: 'Try the door' },
   key: { title: 'The last key', text: 'A cold brass key waits in the new chamber. Search beyond the Christian cross and the weapons rack.', action: 'Take the key' },
   hammer: { title: 'The iron hammer', text: 'A heavy iron hammer turns slowly in the air. Pick it up before trying to break the sealed panels and crates.', action: 'Pick up the hammer' },
+  bag: { title: 'The rat-catching bag', text: 'A canvas bag turns beside the bookcase. Pick it up, then get close to the wandering rats and use the catch action.', action: 'Pick up the rat bag' },
+  rats: { title: 'The wandering rats', text: 'The rats dart across the study. With the bag equipped, get close and catch them before continuing.', action: 'Catch the rats' },
   haunted: { title: 'The haunted chamber', text: 'The walls are covered in crosses. A ritual table, old weapons and silent bodies fill the darkness. Find the final key.', action: 'Explore the chamber' },
   cross: { text: 'The cross has fresh scratches beneath it. Press the hidden button to open a panel and claim the gem inside.', action: 'Press the hidden button' },
   weapons: { text: 'A battered crate is wedged beside the weapons rack. Break it open to search for a gem.', action: 'Break open the crate' },
@@ -972,15 +1142,19 @@ function App() {
   const [hauntedRoom, setHauntedRoom] = useState(false)
   const [gameWon, setGameWon] = useState(false)
   const [showWinBanner, setShowWinBanner] = useState(false)
+  const [gameOver, setGameOver] = useState(false)
   const [nearbyTask, setNearbyTask] = useState(null)
   const [hasHammer, setHasHammer] = useState(false)
+  const [hasBag, setHasBag] = useState(false)
   const [hammerSwing, setHammerSwing] = useState(0)
+  const [catchAction, setCatchAction] = useState(0)
   const [gems, setGems] = useState(0)
-  const [message, setMessage] = useState('Find the portrait, desk and chest to open the next room.')
+  const [message, setMessage] = useState('The exit is sealed. Find the portrait, desk and chest to open the next room.')
   const [seconds, setSeconds] = useState(18 * 60 + 42)
 
-  const targets = hauntedRoom ? [...HAUNTED_TASKS, HAMMER_TARGET, { id: 'key', floor: 'Second floor', position: [7.2, -4.35], radius: 0.62 }] : ROOM_TARGETS
-  const collected = hasHammer ? ['hammer'] : []
+  const targets = hauntedRoom ? [...HAUNTED_TASKS, HAMMER_TARGET, { id: 'key', floor: 'Second floor', position: [7.2, -4.35], radius: 0.62 }] : [...ROOM_TARGETS, BAG_TARGET, RAT_TARGET]
+  const manualTargets = hauntedRoom ? [] : ['bag', 'rats']
+  const collected = [...(hasHammer ? ['hammer'] : []), ...(hasBag ? ['bag'] : [])]
   const clue = CLUES[selected] || CLUES.painting
 
   useEffect(() => {
@@ -989,7 +1163,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (hauntedRoom || found.length !== 3) return undefined
+    if (hauntedRoom || found.length !== ROOM_TASKS.length) return undefined
     setRoomComplete(true)
     const transition = window.setTimeout(() => {
       setHauntedRoom(true)
@@ -1004,7 +1178,11 @@ function App() {
   const time = useMemo(() => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`, [seconds])
 
   const isTaskUnlocked = (id) => {
-    if (!hauntedRoom) return true
+    if (!hauntedRoom) {
+      if (id === 'bag') return !hasBag
+      if (id === 'rats') return hasBag
+      return true
+    }
     if (id === 'hammer') return !hasHammer
     if (id === 'key') return gems >= GEM_REQUIREMENT
     const task = HAUNTED_TASKS.find((item) => item.id === id)
@@ -1025,6 +1203,14 @@ function App() {
     setNearbyTask(id)
     if (id === 'hammer') {
       setMessage('The hammer is within reach. Use the action button or press Enter to pick it up.')
+      return
+    }
+    if (id === 'bag') {
+      setMessage('The rat-catching bag is within reach. Use the action button or press Enter to pick it up.')
+      return
+    }
+    if (id === 'rats') {
+      setMessage('The rats are close enough. Use the bag action or press Enter to catch them.')
       return
     }
     if (id === 'key') {
@@ -1054,7 +1240,22 @@ function App() {
   }
 
   const completeTask = (id) => {
-    if (!hauntedRoom || nearbyTask !== id || found.includes(id) || (id === 'hammer' && hasHammer) || !isTaskUnlocked(id)) return
+    const firstRoomAction = id === 'bag' || id === 'rats'
+    if (gameOver || (!hauntedRoom && !firstRoomAction) || nearbyTask !== id || found.includes(id) || (id === 'hammer' && hasHammer) || (id === 'bag' && hasBag) || !isTaskUnlocked(id)) return
+    if (id === 'bag') {
+      setHasBag(true)
+      setFound((items) => items.includes(id) ? items : [...items, id])
+      setNearbyTask(null)
+      setMessage('Bag picked up. Chase the rats and use the catch action when you get close.')
+      return
+    }
+    if (id === 'rats') {
+      setFound((items) => items.includes(id) ? items : [...items, id])
+      setCatchAction((count) => count + 1)
+      setNearbyTask(null)
+      setMessage('You caught the rats. The bag is secured and the room is quiet again.')
+      return
+    }
     if (id === 'hammer') {
       setHasHammer(true)
       setNearbyTask(null)
@@ -1079,10 +1280,37 @@ function App() {
     setMessage(`${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.`)
   }
 
+  const handleDeath = (reason) => {
+    if (gameOver || gameWon) return
+    setGameOver(true)
+    setShowWinBanner(false)
+    setRoomComplete(false)
+    setNearbyTask(null)
+    setMessage(`${reason} GAME OVER. Returning to the beginning room...`)
+    window.setTimeout(() => {
+      setHauntedRoom(false)
+      setFound([])
+      setSelected('painting')
+      setGameWon(false)
+      setHasHammer(false)
+      setHasBag(false)
+      setHammerSwing(0)
+      setCatchAction(0)
+      setGems(0)
+      setSeconds(18 * 60 + 42)
+      setGameOver(false)
+      setMessage('The exit is sealed. Find the portrait, desk and chest to open the next room.')
+    }, 2600)
+  }
+
   const onBlocked = (id) => {
     setSelected(id)
     setNearbyTask(id)
-    if (id === 'hammer') return
+    if (id === 'hammer' || id === 'bag') return
+    if (id === 'rats' && !hasBag) {
+      setMessage('The rats are too fast. Find the rat-catching bag first.')
+      return
+    }
     if (id === 'key') {
       setMessage(`The key is sealed. You need ${GEM_REQUIREMENT} gems to open it; you have ${gems}.`)
       return
@@ -1096,8 +1324,8 @@ function App() {
   }
 
   const visibleTasks = hauntedRoom ? HAUNTED_TASKS : ROOM_TASKS
-  const selectedTask = HAUNTED_TASKS.find((task) => task.id === selected)
-  const actionAvailable = hauntedRoom && nearbyTask === selected && !found.includes(selected) && isTaskUnlocked(selected)
+  const selectedTask = HAUNTED_TASKS.find((task) => task.id === selected) || SPECIAL_TASKS.find((task) => task.id === selected)
+  const actionAvailable = nearbyTask === selected && !found.includes(selected) && !collected.includes(selected) && isTaskUnlocked(selected) && (hauntedRoom || manualTargets.includes(selected))
   const taskFloors = hauntedRoom ? ['First floor', 'Ground floor', 'Second floor'] : ['First floor']
   const taskTotal = hauntedRoom ? HAUNTED_TASKS.length + 1 : ROOM_TASKS.length
 
@@ -1121,19 +1349,19 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hammerSwing={hammerSwing} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}</div>
-        <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'One focused room. Find the portrait, desk and chest, then the next chamber will open.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} manualTargets={manualTargets} hasHammer={hasHammer} hammerSwing={hammerSwing} hasBag={hasBag} catchAction={catchAction} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} onDeath={handleDeath} disabled={gameOver} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>FOUR TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{gameOver && <div className="win-banner game-over-banner"><span className="win-icon">☠</span><div><p>GAME OVER</p><strong>The house is pulling you back to the beginning…</strong></div><span className="round-loader">● ● ●</span></div>}</div>
+        <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'The exit is sealed. Find the portrait, desk and chest, then pick up the bag and catch the rats.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
       <aside className="clue-panel">
         <div className="panel-top"><p className="eyebrow">Investigation log</p><span className="panel-count">{found.length.toString().padStart(2, '0')} / {taskTotal.toString().padStart(2, '0')}</span></div>
         <div className="object-heading"><span className="object-icon">{HOTSPOTS[selected].icon}</span><div><p>{HOTSPOTS[selected].location}</p><h2>{HOTSPOTS[selected].label}</h2></div></div>
         <div className="clue-copy"><p>{clue.text}</p></div>
-        {hauntedRoom && <button className="action-button task-action" type="button" disabled={!actionAvailable} onClick={() => completeTask(selected)}>{found.includes(selected) ? 'Task completed' : selected === 'hammer' ? 'Pick up the hammer' : selected === 'key' ? 'Take the final key' : selectedTask?.action || 'Move closer to interact'}<span>↗</span></button>}
+        {(hauntedRoom || manualTargets.includes(selected)) && <button className="action-button task-action" type="button" disabled={!actionAvailable} onClick={() => completeTask(selected)}>{found.includes(selected) ? 'Task completed' : selected === 'hammer' ? 'Pick up the hammer' : selected === 'bag' ? 'Pick up the rat bag' : selected === 'rats' ? 'Catch the rats' : selected === 'key' ? 'Take the final key' : selectedTask?.action || 'Move closer to interact'}<span>↗</span></button>}
         {message && <div className="feedback"><span>✓</span>{message}</div>}
         <div className="action-button movement-tip"><span className="key-cap">↑</span><span className="key-cap">↓</span><span className="key-cap">←</span><span className="key-cap">→</span><strong>Move toward the object</strong></div>
-        <div className="inventory"><div className="inventory-head"><span>{hauntedRoom ? 'Haunted chamber' : 'Room objectives'}</span><span>{hauntedRoom ? `${gems} / ${GEM_REQUIREMENT} GEMS` : '3 TASKS'}</span></div><div className="floor-objectives">{taskFloors.map((floor) => <div className="floor-objective" key={floor}><div className="floor-objective-head"><b>{floor}</b><small>{hauntedRoom ? `${visibleTasks.filter((task) => task.floor === floor && found.includes(task.id)).length} / ${visibleTasks.filter((task) => task.floor === floor).length}` : '3 TASKS'}</small></div>{visibleTasks.filter((task) => task.floor === floor).map((task) => <div className={`floor-task ${found.includes(task.id) ? 'completed' : ''} ${!isTaskUnlocked(task.id) ? 'locked' : ''}`} key={task.id}><span>{found.includes(task.id) ? '✓' : '·'}</span>{task.text}</div>)}</div>)}{hauntedRoom && <div className="tool-status"><span>{hasHammer ? '⚒' : '·'}</span>{hasHammer ? 'Iron hammer ready' : 'Find the iron hammer on the first floor'}</div>}{hauntedRoom && <div className={`floor-objective final-objective ${found.includes('key') ? 'completed' : ''}`}><div className="floor-objective-head"><b>Final goal</b><small>{found.includes('key') ? 'FOUND' : 'HIDDEN'}</small></div><div className={`floor-task ${!isTaskUnlocked('key') ? 'locked' : ''}`}><span>{found.includes('key') ? '✓' : '·'}</span>Find the last key inside the cabinet ({GEM_REQUIREMENT} gems)</div></div>}</div></div>
-        <div className="hint-footer"><span className="hint-bulb">✧</span><span><b>How to play</b> Click the scene to capture the mouse. Look left or right, move with WASD, then get close and use the task button to claim each gem.</span></div>
+        <div className="inventory"><div className="inventory-head"><span>{hauntedRoom ? 'Haunted chamber' : 'Room objectives'}</span><span>{hauntedRoom ? `${gems} / ${GEM_REQUIREMENT} GEMS` : `${ROOM_TASKS.length} TASKS`}</span></div><div className="floor-objectives">{taskFloors.map((floor) => <div className="floor-objective" key={floor}><div className="floor-objective-head"><b>{floor}</b><small>{hauntedRoom ? `${visibleTasks.filter((task) => task.floor === floor && found.includes(task.id)).length} / ${visibleTasks.filter((task) => task.floor === floor).length}` : `${ROOM_TASKS.length} TASKS`}</small></div>{visibleTasks.filter((task) => task.floor === floor).map((task) => <div className={`floor-task ${found.includes(task.id) ? 'completed' : ''} ${!isTaskUnlocked(task.id) ? 'locked' : ''}`} key={task.id}><span>{found.includes(task.id) ? '✓' : '·'}</span>{task.text}</div>)}</div>)}{hauntedRoom && <div className="tool-status"><span>{hasHammer ? '⚒' : '·'}</span>{hasHammer ? 'Iron hammer ready' : 'Find the iron hammer on the first floor'}</div>}{hauntedRoom && <div className={`floor-objective final-objective ${found.includes('key') ? 'completed' : ''}`}><div className="floor-objective-head"><b>Final goal</b><small>{found.includes('key') ? 'FOUND' : 'HIDDEN'}</small></div><div className={`floor-task ${!isTaskUnlocked('key') ? 'locked' : ''}`}><span>{found.includes('key') ? '✓' : '·'}</span>Find the last key inside the cabinet ({GEM_REQUIREMENT} gems)</div></div>}</div></div>
+        <div className="hint-footer"><span className="hint-bulb">✧</span><span><b>How to play</b> Click the scene to capture the mouse. Look left or right, move with WASD, then get close and use the task button when it appears.</span></div>
       </aside>
     </section>
   </main>
