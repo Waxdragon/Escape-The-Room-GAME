@@ -21,5 +21,24 @@ The feedback should:
 ## First room follow-up
 Apply the same contextual task-message system to the first room later. Do not change the first-room task feedback as part of the current work; this should be handled in a separate follow-up.
 
+## Future Task: Make the rats meaningful interactions
+
+### User feedback
+Users currently see the rats as moving NPCs but cannot interact with them. This makes them feel decorative and can cause confusion about whether they are part of the gameplay.
+
+### Planned improvement
+Design rat-related tasks instead of leaving the rats as passive background characters. The interaction should be clear, optional when appropriate, and connected to the room's puzzle flow.
+
+Possible rat interactions include:
+
+- Follow rat tracks to discover a hidden clue.
+- Lure a rat away from an important area to reveal an object.
+- Chase a specific marked rat that carries a clue or key fragment.
+- Use a room object to safely interact with the rats.
+- Observe the rats to identify a dangerous path or hidden entrance.
+- Reward the player with a clue, gem, or access to a new area after completing the rat-related task.
+
+The final interaction should show a clear action prompt, a visible result, and a short message explaining why the rats mattered. Rats should not be treated as clickable NPCs unless the game gives the player a specific interaction or tool for that task.
+
 ## Scope
-This is a future usability and polish task. It is documented now and can be implemented later without changing the current gameplay flow.
+This is a future usability and gameplay task. It is documented now and can be implemented later without changing the current gameplay flow.
