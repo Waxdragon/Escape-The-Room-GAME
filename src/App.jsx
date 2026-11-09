@@ -229,7 +229,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 0.8} color={hauntedRoom ? '#e0dcff' : '#f4d3a0'} />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
       <FloorAudio hauntedRoom={hauntedRoom} />
-      {hauntedRoom ? <HauntedRoomContents found={found} /> : <>
+      {hauntedRoom ? <HauntedRoomContents found={found} hasHammer={hasHammer} /> : <>
         <pointLight position={[4, 2.4, -2]} intensity={18} distance={9} color="#f6b967" />
         <RoomLighting />
         <RoomShell />
@@ -254,8 +254,10 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
 function HammerHand({ active, swing = 0 }) {
   const hand = useRef()
   const lastSwing = useRef(swing)
-  const swingStarted = useRef(0)
+  const swingStarted = useRef(-10)
   const { camera } = useThree()
+  const basePosition = [0.5, -0.42, -0.92]
+  const baseRotation = [0.16, -0.16, -0.3]
 
   useEffect(() => {
     if (!hand.current) return undefined
@@ -269,16 +271,19 @@ function HammerHand({ active, swing = 0 }) {
       lastSwing.current = swing
       swingStarted.current = clock.elapsedTime
     }
-    const progress = THREE.MathUtils.clamp((clock.elapsedTime - swingStarted.current) / 0.48, 0, 1)
-    const strike = Math.sin(progress * Math.PI)
-    hand.current.position.set(0.42 - strike * 0.16, -0.4 + strike * 0.16, -0.72 + strike * 0.1)
-    hand.current.rotation.set(0.2 - strike * 1.1, -0.18 + strike * 0.2, -0.42 - strike * 1.7)
+    const elapsedSinceSwing = clock.elapsedTime - swingStarted.current
+    const progress = swingStarted.current >= 0 && elapsedSinceSwing < 0.62 ? THREE.MathUtils.clamp(elapsedSinceSwing / 0.62, 0, 1) : 0
+    const windup = THREE.MathUtils.clamp(progress / 0.28, 0, 1)
+    const hit = progress < 0.28 ? 0 : 1 - THREE.MathUtils.clamp((progress - 0.28) / 0.5, 0, 1)
+    hand.current.position.set(basePosition[0] - windup * 0.13 + hit * 0.16, basePosition[1] + windup * 0.18 - hit * 0.2, basePosition[2] + windup * 0.08 + hit * 0.12)
+    hand.current.rotation.set(baseRotation[0] - windup * 0.35 + hit * 0.55, baseRotation[1] + windup * 0.18, baseRotation[2] + windup * 0.55 - hit * 2.4)
   })
 
-  return <group ref={hand} visible={active} position={[0.42, -0.4, -0.72]} rotation={[0.2, -0.18, -0.42]}>
-    <mesh position={[0, -0.22, 0]} rotation={[0.2, 0, -0.18]} castShadow><cylinderGeometry args={[0.11, 0.14, 0.62, 10]} /><meshStandardMaterial color="#6f4638" roughness={0.8} /></mesh>
-    <mesh position={[0, 0.14, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><boxGeometry args={[0.55, 0.2, 0.18]} /><meshStandardMaterial color="#657176" metalness={0.75} roughness={0.22} /></mesh>
-    <mesh position={[-0.12, -0.08, 0]} castShadow><sphereGeometry args={[0.16, 12, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} /></mesh>
+  return <group ref={hand} visible={active} position={basePosition} rotation={baseRotation}>
+    <mesh position={[0.08, -0.43, 0.08]} rotation={[0.26, 0, -0.2]} castShadow><cylinderGeometry args={[0.15, 0.18, 0.92, 10]} /><meshStandardMaterial color="#6f4638" roughness={0.8} /></mesh>
+    <mesh position={[0, -0.1, 0]} castShadow><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} /></mesh>
+    <mesh position={[0, 0.22, 0]} castShadow><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} /></mesh>
+    <mesh position={[0, 0.22, 0.13]}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} /></mesh>
   </group>
 }
 
@@ -374,13 +379,13 @@ function FloorAudio({ hauntedRoom }) {
   return null
 }
 
-function HauntedRoomContents({ found }) {
+function HauntedRoomContents({ found, hasHammer }) {
   return <>
     <HauntedRoomShell />
     <ThreeStoreyStairs />
     <HauntedLighting />
     <HauntedRoomProps found={found} />
-    <HauntedHammer position={[HAMMER_TARGET.position[0], 1.45, HAMMER_TARGET.position[1]]} />
+    {!hasHammer && <HauntedHammer position={[HAMMER_TARGET.position[0], 1.45, HAMMER_TARGET.position[1]]} />}
     <HiddenKeyCabinet position={[7.2, 5.18, -4.6]} />
     <KeyClues floorY={-4.62} />
     <KeyClues floorY={5.02} />
