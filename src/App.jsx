@@ -30,13 +30,22 @@ const ROOM_TASKS = [
   { id: 'chest', floor: 'First floor', text: 'Open the ironbound chest' },
 ]
 const HAUNTED_TASKS = [
-  { id: 'cross', floor: 'First floor', text: 'Inspect the Christian cross', position: [0, -6.1], radius: 0.9 },
-  { id: 'weapons', floor: 'First floor', text: 'Search the weapons rack', position: [6.9, -6.05], radius: 0.9 },
-  { id: 'groundBody', floor: 'Ground floor', text: 'Search the fallen body', position: [-5.4, 1.8], radius: 0.9 },
-  { id: 'groundClue', floor: 'Ground floor', text: 'Follow the blood-marked clues', position: [5.6, -4.2], radius: 0.85 },
-  { id: 'secondBody', floor: 'Second floor', text: 'Search the silent body', position: [3.6, 3.2], radius: 0.9 },
-  { id: 'secondCross', floor: 'Second floor', text: 'Read the high cross inscription', position: [5.2, -6.1], radius: 0.9 },
+  { id: 'cross', floor: 'First floor', text: 'Press the hidden button', action: 'Press the hidden button', actionText: 'A panel opens behind the cross and reveals a crimson gem.', reward: 1, position: [0, -6.1], radius: 0.9 },
+  { id: 'weapons', floor: 'First floor', text: 'Break open the weapons crate', action: 'Break open the crate', actionText: 'The splintered crate contains a violet gem.', reward: 1, position: [6.9, -6.05], radius: 0.9 },
+  { id: 'groundBody', floor: 'Ground floor', text: 'Open the evidence file', action: 'Open the evidence file', actionText: 'A bloodstained file folds around an amber gem.', reward: 1, position: [-5.4, 1.8], radius: 0.9 },
+  { id: 'groundClue', floor: 'Ground floor', text: 'Unlock the blood-marked cabinet', action: 'Open the old cabinet', actionText: 'Inside the cabinet, a green gem glows beside the clues.', reward: 1, position: [5.6, -4.2], radius: 0.85 },
+  { id: 'secondBody', floor: 'Second floor', text: 'Open the coat file', action: 'Open the coat file', actionText: 'The hidden pocket holds a blue gem.', reward: 1, position: [3.6, 3.2], radius: 0.9 },
+  { id: 'secondCross', floor: 'Second floor', text: 'Break the stone panel', action: 'Break the stone panel', actionText: 'Behind the inscription is a final white gem.', reward: 1, position: [5.2, -6.1], radius: 0.9 },
 ]
+const GEM_REQUIREMENT = 6
+const GEM_POSITIONS = {
+  cross: [0, 2.05, -6.48],
+  weapons: [6.9, 1.65, -6.42],
+  groundBody: [-5.4, -4.18, 1.8],
+  groundClue: [5.6, -4.24, -4.2],
+  secondBody: [3.6, 5.65, 3.2],
+  secondCross: [5.2, 8.25, -6.48],
+}
 
 
 function Map({ selected, discovered, onSelect }) {
@@ -93,10 +102,11 @@ function MapMarker({ id, x, y, selected, discovered, onSelect }) {
   )
 }
 
-function FirstPersonController({ targets, found, onDiscover, onBlocked, canDiscover = () => true, hauntedRoom = false }) {
+function FirstPersonController({ targets, found, onDiscover, onApproach, onLeave, onBlocked, canDiscover = () => true, hauntedRoom = false }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
   const keys = useRef({})
   const blockedTarget = useRef(null)
+  const nearbyTarget = useRef(null)
   const yaw = useRef(0)
   const cameraYaw = useRef(0)
   const velocity = useRef(new THREE.Vector3())
@@ -178,12 +188,20 @@ function FirstPersonController({ targets, found, onDiscover, onBlocked, canDisco
       const nearby = Math.hypot(player.current.x - position[0], player.current.z - position[1]) < radius
       if (!nearby) {
         if (blockedTarget.current === id) blockedTarget.current = null
+        if (nearbyTarget.current === id) {
+          nearbyTarget.current = null
+          onLeave?.(id)
+        }
         return
       }
       if (found.includes(id)) return
       if (canDiscover(id)) {
         blockedTarget.current = null
-        onDiscover(id)
+        if (nearbyTarget.current !== id) {
+          nearbyTarget.current = id
+          if (hauntedRoom) onApproach?.(id)
+          else onDiscover(id)
+        }
       } else if (blockedTarget.current !== id) {
         blockedTarget.current = id
         onBlocked?.(id)
@@ -194,7 +212,7 @@ function FirstPersonController({ targets, found, onDiscover, onBlocked, canDisco
   return null
 }
 
-function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, onDiscover, canDiscover, onBlocked }) {
+function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, onDiscover, onApproach, onLeave, canDiscover, onBlocked }) {
   const interactive = (id) => ({
     onClick: (event) => { event.stopPropagation(); onSelect(id) },
     onPointerOver: (event) => { event.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -209,7 +227,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 0.8} color={hauntedRoom ? '#e0dcff' : '#f4d3a0'} />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
       <FloorAudio hauntedRoom={hauntedRoom} />
-      {hauntedRoom ? <HauntedRoomContents /> : <>
+      {hauntedRoom ? <HauntedRoomContents found={found} /> : <>
         <pointLight position={[4, 2.4, -2]} intensity={18} distance={9} color="#f6b967" />
         <RoomLighting />
         <RoomShell />
@@ -224,7 +242,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
         <WanderingRat path={[[-4.8, 2.8], [-2.4, 2.8], [-1.2, 0.8], [-3.5, -0.5]]} speed={0.48} phase={0.2} />
         <WanderingRat path={[[4.8, 2.8], [2.6, 1.9], [3.2, -0.8], [5.4, -2.5]]} speed={0.34} phase={1.8} scale={0.82} />
       </>}
-      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} onDiscover={onDiscover} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} />
+      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} hauntedRoom={hauntedRoom} />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />
     </Canvas>
   )
@@ -322,12 +340,12 @@ function FloorAudio({ hauntedRoom }) {
   return null
 }
 
-function HauntedRoomContents() {
+function HauntedRoomContents({ found }) {
   return <>
     <HauntedRoomShell />
     <ThreeStoreyStairs />
     <HauntedLighting />
-    <HauntedRoomProps />
+    <HauntedRoomProps found={found} />
     <HiddenKeyCabinet position={[7.2, 5.18, -4.6]} />
     <KeyClues floorY={-4.62} />
     <KeyClues floorY={5.02} />
@@ -463,8 +481,9 @@ function StairBlinker({ position, color, phase = 0 }) {
   </group>
 }
 
-function HauntedRoomProps() {
+function HauntedRoomProps({ found }) {
   return <>
+    <HauntedTaskProps found={found} />
     <HauntedCross position={[0, 3.4, -6.82]} scale={1.35} />
     <HauntedCross position={[-6.5, 2.5, -6.78]} scale={0.72} rotation={[0, 0.15, 0]} />
     <HauntedCross position={[5.2, 7.7, -6.78]} scale={0.9} rotation={[0, -0.12, 0]} />
@@ -492,6 +511,25 @@ function HauntedRoomProps() {
     <pointLight position={[6.8, 2.6, -6.1]} color="#7565b8" intensity={4} distance={5} />
     <pointLight position={[-6, 1.8, 1.5]} color="#9e4e48" intensity={3} distance={5} />
   </>
+}
+
+function HauntedTaskProps({ found }) {
+  return <>
+    <mesh position={[0, 2.05, -6.55]} castShadow><boxGeometry args={[0.34, 0.22, 0.12]} /><meshStandardMaterial color="#8c3237" emissive="#5d171f" emissiveIntensity={0.5} /></mesh>
+    <mesh position={[6.9, 0.62, -5.82]} castShadow><boxGeometry args={[1.15, 0.95, 0.9]} /><meshStandardMaterial color="#4b302b" roughness={0.95} /></mesh>
+    <mesh position={[-5.4, -4.12, 1.8]} rotation={[0.08, -0.25, 0.12]} castShadow><boxGeometry args={[0.62, 0.08, 0.42]} /><meshStandardMaterial color="#a77d67" roughness={0.85} /></mesh>
+    <mesh position={[5.6, -4.22, -4.18]} castShadow><boxGeometry args={[0.72, 0.6, 0.34]} /><meshStandardMaterial color="#563431" roughness={0.88} /></mesh>
+    <mesh position={[3.6, 5.58, 3.2]} rotation={[0, 0.35, -0.1]} castShadow><boxGeometry args={[0.62, 0.08, 0.42]} /><meshStandardMaterial color="#7e91a7" roughness={0.85} /></mesh>
+    <mesh position={[5.2, 8.22, -6.55]} castShadow><boxGeometry args={[0.9, 0.14, 0.08]} /><meshStandardMaterial color="#766a85" roughness={0.9} /></mesh>
+    {HAUNTED_TASKS.map((task) => found.includes(task.id) && <TaskGem key={task.id} position={GEM_POSITIONS[task.id]} />)}
+  </>
+}
+
+function TaskGem({ position }) {
+  return <group position={position}>
+    <mesh rotation={[0.35, 0.6, 0.2]} castShadow><octahedronGeometry args={[0.2, 0]} /><meshStandardMaterial color="#c7f0ff" emissive="#55b7d8" emissiveIntensity={1.5} metalness={0.45} roughness={0.16} /></mesh>
+    <pointLight color="#70dfff" intensity={1.8} distance={2.4} decay={2} />
+  </group>
 }
 
 function BrokenPicture({ position, rotation = [0, 0, 0] }) {
@@ -862,12 +900,12 @@ const CLUES = {
   door: { title: 'The exit', text: 'A heavy door with a keyhole shaped like a crescent moon. There is no handle on this side.', action: 'Try the door' },
   key: { title: 'The last key', text: 'A cold brass key waits in the new chamber. Search beyond the Christian cross and the weapons rack.', action: 'Take the key' },
   haunted: { title: 'The haunted chamber', text: 'The walls are covered in crosses. A ritual table, old weapons and silent bodies fill the darkness. Find the final key.', action: 'Explore the chamber' },
-  cross: { text: 'The cross has fresh scratches beneath it. A thin red mark points toward the lower floor.', action: 'Inspect the cross' },
-  weapons: { text: 'Dust outlines a missing weapon. A torn strip of cloth is caught on the rack and smells of candle smoke.', action: 'Search the rack' },
-  groundBody: { text: 'The body is cold, but its hand points toward a trail of dark marks leading across the floor.', action: 'Search the body' },
-  groundClue: { text: 'Three faded marks stop beside an old cabinet. The last one is shaped like a small key.', action: 'Follow the clues' },
-  secondBody: { text: 'A silent figure lies beneath the blue light. A note in its coat mentions a cross above the weapon room.', action: 'Search the coat' },
-  secondCross: { text: 'The high inscription reads: “What is hidden is found by those who look close.”', action: 'Read inscription' },
+  cross: { text: 'The cross has fresh scratches beneath it. Press the hidden button to open a panel and claim the gem inside.', action: 'Press the hidden button' },
+  weapons: { text: 'A battered crate is wedged beside the weapons rack. Break it open to search for a gem.', action: 'Break open the crate' },
+  groundBody: { text: 'The body is cold, but an evidence file is tucked beneath its hand. Open it to find what was hidden.', action: 'Open the evidence file' },
+  groundClue: { text: 'Three faded marks stop beside an old cabinet. Unlock it to reveal the gem beside the final clue.', action: 'Open the old cabinet' },
+  secondBody: { text: 'A silent figure lies beneath the blue light. A sealed coat file contains something valuable.', action: 'Open the coat file' },
+  secondCross: { text: 'The high inscription hides a thin stone panel. Break it to expose the last gem.', action: 'Break the stone panel' },
 }
 
 function App() {
@@ -877,6 +915,8 @@ function App() {
   const [hauntedRoom, setHauntedRoom] = useState(false)
   const [gameWon, setGameWon] = useState(false)
   const [showWinBanner, setShowWinBanner] = useState(false)
+  const [nearbyTask, setNearbyTask] = useState(null)
+  const [gems, setGems] = useState(0)
   const [message, setMessage] = useState('Find the portrait, desk and chest to open the next room.')
   const [seconds, setSeconds] = useState(18 * 60 + 42)
 
@@ -905,7 +945,7 @@ function App() {
 
   const isTaskUnlocked = (id) => {
     if (!hauntedRoom) return true
-    if (id === 'key') return HAUNTED_TASKS.every((task) => found.includes(task.id))
+    if (id === 'key') return gems >= GEM_REQUIREMENT
     const task = HAUNTED_TASKS.find((item) => item.id === id)
     if (!task) return true
     const floors = ['First floor', 'Ground floor', 'Second floor']
@@ -916,6 +956,21 @@ function App() {
   const selectObject = (id) => {
     setSelected(id)
     setMessage('')
+  }
+
+  const approachObject = (id) => {
+    setSelected(id)
+    setNearbyTask(id)
+    if (id === 'key') {
+      setMessage(isTaskUnlocked(id) ? `The final key is within reach. Take it with ${GEM_REQUIREMENT} gems.` : `The key is sealed. Find ${GEM_REQUIREMENT} gems before taking it.`)
+      return
+    }
+    const task = HAUNTED_TASKS.find((item) => item.id === id)
+    if (task && !found.includes(id)) setMessage(`${task.action} is ready. Use the action button to continue.`)
+  }
+
+  const leaveObject = (id) => {
+    setNearbyTask((current) => current === id ? null : current)
   }
 
   const discoverObject = (id) => {
@@ -932,10 +987,30 @@ function App() {
     setMessage(`${HOTSPOTS[id].label} completed. Keep searching this floor.`)
   }
 
+  const completeTask = (id) => {
+    if (!hauntedRoom || nearbyTask !== id || found.includes(id) || !isTaskUnlocked(id)) return
+    if (id === 'key') {
+      setFound((items) => items.includes(id) ? items : [...items, id])
+      setMessage('You found the final key. The house falls silent.')
+      setGameWon(true)
+      setShowWinBanner(true)
+      setNearbyTask(null)
+      window.setTimeout(() => setShowWinBanner(false), 4500)
+      return
+    }
+    const task = HAUNTED_TASKS.find((item) => item.id === id)
+    if (!task) return
+    setFound((items) => items.includes(id) ? items : [...items, id])
+    setGems((count) => count + task.reward)
+    setNearbyTask(null)
+    setMessage(`${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.`)
+  }
+
   const onBlocked = (id) => {
     setSelected(id)
+    setNearbyTask(id)
     if (id === 'key') {
-      setMessage('The drawer will not yield yet. Complete every task on the first floor, ground floor and second floor.')
+      setMessage(`The key is sealed. You need ${GEM_REQUIREMENT} gems to open it; you have ${gems}.`)
       return
     }
     const task = HAUNTED_TASKS.find((item) => item.id === id)
@@ -943,6 +1018,8 @@ function App() {
   }
 
   const visibleTasks = hauntedRoom ? HAUNTED_TASKS : ROOM_TASKS
+  const selectedTask = HAUNTED_TASKS.find((task) => task.id === selected)
+  const actionAvailable = hauntedRoom && nearbyTask === selected && !found.includes(selected) && isTaskUnlocked(selected)
   const taskFloors = hauntedRoom ? ['First floor', 'Ground floor', 'Second floor'] : ['First floor']
   const taskTotal = hauntedRoom ? HAUNTED_TASKS.length + 1 : ROOM_TASKS.length
 
@@ -950,7 +1027,7 @@ function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark">✦</span><div><p className="brand-kicker">A QUIET PLACE TO</p><h1>ESCAPE</h1></div></div>
       <div className="game-title"><span>CASE 014 · {hauntedRoom ? 'HAUNTED CHAMBER' : 'THE STUDY'}</span><strong>{hauntedRoom ? 'THE LAST ROOM' : 'THE LAST ROOM'}</strong></div>
-      <div className="top-status"><div className="timer"><span className="timer-dot" />{time}</div><div className="progress"><span>{hauntedRoom ? 'HOUSE TASKS' : 'ROOM TASKS'}</span><b>{found.length} / {taskTotal}</b><i><em style={{ width: `${found.length / taskTotal * 100}%` }} /></i></div></div>
+      <div className="top-status"><div className="timer"><span className="timer-dot" />{time}</div>{hauntedRoom && <div className="gem-counter"><span>◇</span><b>{gems} / {GEM_REQUIREMENT}</b><small>GEMS</small></div>}<div className="progress"><span>{hauntedRoom ? 'HOUSE TASKS' : 'ROOM TASKS'}</span><b>{found.length} / {taskTotal}</b><i><em style={{ width: `${found.length / taskTotal * 100}%` }} /></i></div></div>
     </header>
 
     <Map selected={selected} discovered={found} onSelect={selectObject} />
@@ -958,7 +1035,7 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} onDiscover={discoverObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}</div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className="fps-crosshair" aria-hidden="true"><span /></div><div className="fps-hint">CLICK TO LOOK 360° LEFT / RIGHT <span>·</span> A / D OR ← / → TO STRAFE <span>·</span> W / S TO WALK</div>{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}</div>
         <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'One focused room. Find the portrait, desk and chest, then the next chamber will open.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
@@ -966,10 +1043,11 @@ function App() {
         <div className="panel-top"><p className="eyebrow">Investigation log</p><span className="panel-count">{found.length.toString().padStart(2, '0')} / {taskTotal.toString().padStart(2, '0')}</span></div>
         <div className="object-heading"><span className="object-icon">{HOTSPOTS[selected].icon}</span><div><p>{HOTSPOTS[selected].location}</p><h2>{HOTSPOTS[selected].label}</h2></div></div>
         <div className="clue-copy"><p>{clue.text}</p></div>
+        {hauntedRoom && <button className="action-button task-action" type="button" disabled={!actionAvailable} onClick={() => completeTask(selected)}>{found.includes(selected) ? 'Task completed' : selected === 'key' ? 'Take the final key' : selectedTask?.action || 'Move closer to interact'}<span>↗</span></button>}
         {message && <div className="feedback"><span>✓</span>{message}</div>}
         <div className="action-button movement-tip"><span className="key-cap">↑</span><span className="key-cap">↓</span><span className="key-cap">←</span><span className="key-cap">→</span><strong>Move toward the object</strong></div>
-        <div className="inventory"><div className="inventory-head"><span>{hauntedRoom ? 'Haunted chamber' : 'Room objectives'}</span><span>{hauntedRoom ? '7 TASKS' : '3 TASKS'}</span></div><div className="floor-objectives">{taskFloors.map((floor) => <div className="floor-objective" key={floor}><div className="floor-objective-head"><b>{floor}</b><small>{hauntedRoom ? `${visibleTasks.filter((task) => task.floor === floor && found.includes(task.id)).length} / ${visibleTasks.filter((task) => task.floor === floor).length}` : '3 TASKS'}</small></div>{visibleTasks.filter((task) => task.floor === floor).map((task) => <div className={`floor-task ${found.includes(task.id) ? 'completed' : ''} ${!isTaskUnlocked(task.id) ? 'locked' : ''}`} key={task.id}><span>{found.includes(task.id) ? '✓' : '·'}</span>{task.text}</div>)}</div>)}{hauntedRoom && <div className={`floor-objective final-objective ${found.includes('key') ? 'completed' : ''}`}><div className="floor-objective-head"><b>Final goal</b><small>{found.includes('key') ? 'FOUND' : 'HIDDEN'}</small></div><div className={`floor-task ${!isTaskUnlocked('key') ? 'locked' : ''}`}><span>{found.includes('key') ? '✓' : '·'}</span>Find the last key inside the cabinet</div></div>}</div></div>
-        <div className="hint-footer"><span className="hint-bulb">✧</span><span><b>How to play</b> Click the scene to capture the mouse. Look left or right, move with WASD, and get close enough to register a find.</span></div>
+        <div className="inventory"><div className="inventory-head"><span>{hauntedRoom ? 'Haunted chamber' : 'Room objectives'}</span><span>{hauntedRoom ? `${gems} / ${GEM_REQUIREMENT} GEMS` : '3 TASKS'}</span></div><div className="floor-objectives">{taskFloors.map((floor) => <div className="floor-objective" key={floor}><div className="floor-objective-head"><b>{floor}</b><small>{hauntedRoom ? `${visibleTasks.filter((task) => task.floor === floor && found.includes(task.id)).length} / ${visibleTasks.filter((task) => task.floor === floor).length}` : '3 TASKS'}</small></div>{visibleTasks.filter((task) => task.floor === floor).map((task) => <div className={`floor-task ${found.includes(task.id) ? 'completed' : ''} ${!isTaskUnlocked(task.id) ? 'locked' : ''}`} key={task.id}><span>{found.includes(task.id) ? '✓' : '·'}</span>{task.text}</div>)}</div>)}{hauntedRoom && <div className={`floor-objective final-objective ${found.includes('key') ? 'completed' : ''}`}><div className="floor-objective-head"><b>Final goal</b><small>{found.includes('key') ? 'FOUND' : 'HIDDEN'}</small></div><div className={`floor-task ${!isTaskUnlocked('key') ? 'locked' : ''}`}><span>{found.includes('key') ? '✓' : '·'}</span>Find the last key inside the cabinet ({GEM_REQUIREMENT} gems)</div></div>}</div></div>
+        <div className="hint-footer"><span className="hint-bulb">✧</span><span><b>How to play</b> Click the scene to capture the mouse. Look left or right, move with WASD, then get close and use the task button to claim each gem.</span></div>
       </aside>
     </section>
   </main>
