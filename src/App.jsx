@@ -312,6 +312,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 0.8} color={hauntedRoom ? '#e0dcff' : '#f4d3a0'} />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
       <FloorAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
+      <FootstepAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
       {hauntedRoom ? <HauntedRoomContents found={found} hasHammer={hasHammer} hasGun={hasGun} enemiesDefeated={enemiesDefeated} droppedItems={droppedItems} audioSettings={audioSettings} muted={muted || paused} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={onEnemyAttack} /> : <>
         <pointLight position={[4, 2.4, -2]} intensity={18} distance={9} color="#f6b967" />
         <RoomLighting />
@@ -560,6 +561,126 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
   </group>
 }
 
+function FootstepAudio({ hauntedRoom, audioSettings = {}, muted = false }) {
+  const { camera, gl } = useThree()
+  const { ambience = 1 } = audioSettings
+  const audio = useRef(null)
+  const lastPosition = useRef(null)
+  const distanceSinceStep = useRef(0)
+  const lastStepAt = useRef(-10)
+  const stepIndex = useRef(0)
+
+  useEffect(() => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextClass) return undefined
+    const canvas = gl.domElement
+    let disposed = false
+
+    const makeNoiseBuffer = (context) => {
+      const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 0.18), context.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let index = 0; index < data.length; index += 1) {
+        const fade = 1 - index / data.length
+        data[index] = (Math.random() * 2 - 1) * fade
+      }
+      return buffer
+    }
+
+    const startAudio = () => {
+      if (disposed) return
+      if (audio.current) {
+        audio.current.context.resume()
+        return
+      }
+      const context = new AudioContextClass()
+      const master = context.createGain()
+      master.gain.value = 0.2 * Math.max(0, ambience)
+      master.connect(context.destination)
+      audio.current = { context, master, noiseBuffer: makeNoiseBuffer(context) }
+      context.resume()
+    }
+
+    canvas.addEventListener('pointerdown', startAudio)
+    window.addEventListener('keydown', startAudio)
+    window.addEventListener('game-audio-unlock', startAudio)
+    return () => {
+      disposed = true
+      canvas.removeEventListener('pointerdown', startAudio)
+      window.removeEventListener('keydown', startAudio)
+      window.removeEventListener('game-audio-unlock', startAudio)
+      if (audio.current) {
+        audio.current.context.close()
+        audio.current = null
+      }
+    }
+  }, [gl])
+
+  useFrame(({ clock }, delta) => {
+    const currentPosition = camera.position
+    if (!lastPosition.current) {
+      lastPosition.current = currentPosition.clone()
+      return
+    }
+
+    const distance = Math.hypot(currentPosition.x - lastPosition.current.x, currentPosition.z - lastPosition.current.z)
+    lastPosition.current.copy(currentPosition)
+    const activeAudio = audio.current
+    if (!activeAudio) {
+      distanceSinceStep.current = 0
+      return
+    }
+    if (activeAudio.context.state === 'suspended') activeAudio.context.resume()
+    activeAudio.master.gain.setTargetAtTime(muted ? 0 : 0.2 * Math.max(0, ambience), activeAudio.context.currentTime, 0.05)
+    if (muted || ambience <= 0) {
+      distanceSinceStep.current = 0
+      return
+    }
+
+    const moving = distance / Math.max(delta, 0.001) > 0.12
+    if (!moving) return
+
+    distanceSinceStep.current += distance
+    const onStairs = hauntedRoom && currentPosition.x > -8.7 && currentPosition.x < -3.7 && (Math.abs(currentPosition.z - 3.05) < 1.05 || Math.abs(currentPosition.z + 3.05) < 1.05)
+    const strideLength = onStairs ? 0.62 : 0.92
+    const cooldown = onStairs ? 0.16 : 0.22
+    if (distanceSinceStep.current < strideLength || clock.elapsedTime - lastStepAt.current < cooldown) return
+
+    distanceSinceStep.current = 0
+    lastStepAt.current = clock.elapsedTime
+    const floorIndex = hauntedRoom ? (currentPosition.y < -1 ? 0 : currentPosition.y > 5.8 ? 2 : 1) : 1
+    const alternatingPitch = stepIndex.current % 2 === 0 ? 1 : 0.88
+    stepIndex.current += 1
+    const now = activeAudio.context.currentTime
+    const body = activeAudio.context.createOscillator()
+    const bodyGain = activeAudio.context.createGain()
+    const baseFrequency = onStairs ? 118 : [72, 82, 94][floorIndex]
+    body.type = onStairs ? 'triangle' : 'sine'
+    body.frequency.setValueAtTime(baseFrequency * alternatingPitch, now)
+    body.frequency.exponentialRampToValueAtTime((onStairs ? 66 : 48) * alternatingPitch, now + 0.13)
+    bodyGain.gain.setValueAtTime(0.001, now)
+    bodyGain.gain.exponentialRampToValueAtTime(onStairs ? 0.22 : 0.16, now + 0.008)
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15)
+    body.connect(bodyGain).connect(activeAudio.master)
+    body.start(now)
+    body.stop(now + 0.17)
+
+    const impact = activeAudio.context.createBufferSource()
+    impact.buffer = activeAudio.noiseBuffer
+    const filter = activeAudio.context.createBiquadFilter()
+    const impactGain = activeAudio.context.createGain()
+    filter.type = 'lowpass'
+    filter.frequency.value = onStairs ? 1500 : 900 + floorIndex * 180
+    impactGain.gain.setValueAtTime(0.001, now)
+    impactGain.gain.exponentialRampToValueAtTime(onStairs ? 0.1 : 0.07, now + 0.006)
+    impactGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
+    impact.connect(filter).connect(impactGain).connect(activeAudio.master)
+    impact.start(now)
+    impact.stop(now + 0.18)
+  })
+
+  return null
+}
+
 function FloorAudio({ hauntedRoom, audioSettings = {}, muted = false }) {
   const { camera, gl } = useThree()
   const { ambience = 1, music = 0.5 } = audioSettings
@@ -739,7 +860,7 @@ function DogBarks({ audioSettings = {}, muted = false, calmed = false }) {
   const { gl } = useThree()
   const { dog = 1 } = audioSettings
   const audio = useRef(null)
-  const nextBark = useRef(5)
+  const nextBark = useRef(1.2)
 
   useEffect(() => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext
@@ -755,7 +876,7 @@ function DogBarks({ audioSettings = {}, muted = false, calmed = false }) {
       }
       const context = new AudioContextClass()
       const master = context.createGain()
-      master.gain.value = 0.075 * (muted ? 0 : dog)
+      master.gain.value = 0.14 * (muted ? 0 : dog)
       master.connect(context.destination)
       audio.current = { context, master }
       context.resume()
@@ -779,7 +900,8 @@ function DogBarks({ audioSettings = {}, muted = false, calmed = false }) {
   useFrame(({ clock }) => {
     if (!audio.current) return
     const { context, master } = audio.current
-    master.gain.setTargetAtTime(muted || calmed ? 0 : 0.075 * dog, context.currentTime, 0.08)
+    if (context.state === 'suspended') context.resume()
+    master.gain.setTargetAtTime(muted || calmed ? 0 : 0.14 * dog, context.currentTime, 0.08)
     if (calmed || clock.elapsedTime < nextBark.current) return
     const now = context.currentTime
     const bark = context.createOscillator()
@@ -1656,6 +1778,76 @@ const CLUES = {
   secondCross: { text: 'The high inscription hides a thin stone panel. Break it to expose the last gem.', action: 'Break the stone panel' },
 }
 
+const BACKSTORY_CHAPTERS = [
+  {
+    eyebrow: 'PROLOGUE · THE PURCHASE',
+    title: 'The house came with a warning',
+    text: 'At dusk, you signed the deed to Northmere House. The price was strangely low, and the auction listing mentioned one condition: never stay past midnight.',
+    scene: 'house',
+  },
+  {
+    eyebrow: 'PROLOGUE · THE HANDOVER',
+    title: 'A key from the previous owner',
+    text: 'The estate agent avoids your eyes. “The last owner disappeared before he could leave,” she says, placing a cold brass key in your palm. “If the house asks you a question, answer it.”',
+    scene: 'handoff',
+  },
+  {
+    eyebrow: 'PROLOGUE · THE FIRST NIGHT',
+    title: 'The study was waiting',
+    text: 'Inside, the portrait seems to follow you. A warm book clicks somewhere in the dark, while three locked dials wait on an ironbound chest. You realize the key you were given opens only the front door.',
+    scene: 'study',
+  },
+  {
+    eyebrow: 'PROLOGUE · THE LAST ROOM',
+    title: 'Something is still alive in the house',
+    text: 'Behind the study, a sealed passage breathes cold air. The missing owner left a trail of gems, weapons and warnings across three floors. Find the last key before the house decides you belong to it.',
+    scene: 'door',
+  },
+]
+
+function BackstoryCinematic({ onComplete }) {
+  const [chapter, setChapter] = useState(0)
+  const current = BACKSTORY_CHAPTERS[chapter]
+
+  const advance = () => {
+    if (chapter >= BACKSTORY_CHAPTERS.length - 1) {
+      onComplete()
+      return
+    }
+    setChapter((value) => value + 1)
+  }
+
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        advance()
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onComplete()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [chapter, onComplete])
+
+  return <div className="prologue-overlay" role="dialog" aria-modal="true" aria-labelledby="prologue-title">
+    <div className="prologue-card">
+      <div className="prologue-topline"><span>THE LAST ROOM</span><span>{String(chapter + 1).padStart(2, '0')} / {String(BACKSTORY_CHAPTERS.length).padStart(2, '0')}</span></div>
+      <div className={`prologue-scene ${current.scene}`} aria-label={`${current.title} cinematic scene`}>
+        {current.scene === 'house' && <><div className="prologue-moon" /><div className="prologue-house"><span className="house-window house-window-one" /><span className="house-window house-window-two" /><span className="house-door" /></div><div className="prologue-ground" /></>}
+        {current.scene === 'handoff' && <><div className="prologue-counter" /><div className="prologue-person agent"><span className="person-head" /><span className="person-body" /><span className="person-arm person-arm-reach" /><span className="person-hand handoff-hand" /></div><div className="prologue-person player"><span className="person-head" /><span className="person-body" /><span className="person-arm player-arm-reach" /><span className="person-hand player-hand" /></div><div className="handoff-key"><span className="key-ring" /><span className="key-shaft" /><span className="key-teeth" /></div><p className="handoff-caption">“The house remembers every owner.”</p></>}
+        {current.scene === 'study' && <><div className="prologue-lamp" /><div className="prologue-portrait"><span className="portrait-face" /></div><div className="prologue-desk" /><div className="prologue-chest" /><div className="prologue-shadow" /></>}
+        {current.scene === 'door' && <><div className="prologue-arch" /><div className="prologue-sealed-door"><span className="sealed-symbol">✦</span><span className="sealed-crack" /></div><div className="prologue-key-glow" /></>}
+      </div>
+      <div className="prologue-copy"><p className="eyebrow">{current.eyebrow}</p><h2 id="prologue-title">{current.title}</h2><p>{current.text}</p></div>
+      <div className="prologue-actions"><button className="action-button" type="button" onClick={advance}>{chapter === BACKSTORY_CHAPTERS.length - 1 ? 'Enter the house' : 'Continue'} <span>↵</span></button><button className="prologue-skip" type="button" onClick={onComplete}>Skip prologue <span>ESC</span></button></div>
+      <div className="prologue-progress" aria-hidden="true">{BACKSTORY_CHAPTERS.map((item, index) => <i className={index <= chapter ? 'active' : ''} key={item.scene} />)}</div>
+    </div>
+  </div>
+}
+
 function App() {
   const [selected, setSelected] = useState('painting')
   const [found, setFound] = useState([])
@@ -1663,6 +1855,8 @@ function App() {
   const [hauntedRoom, setHauntedRoom] = useState(false)
   const [gameWon, setGameWon] = useState(false)
   const [showWinBanner, setShowWinBanner] = useState(false)
+  const [showReplayPrompt, setShowReplayPrompt] = useState(false)
+  const [showIntro, setShowIntro] = useState(true)
   const [nearbyTask, setNearbyTask] = useState(null)
   const [hasHammer, setHasHammer] = useState(false)
   const [hasGun, setHasGun] = useState(false)
@@ -1686,7 +1880,7 @@ function App() {
   const [message, setMessage] = useState('The exit is sealed. Find the portrait, desk and chest to open the next room.')
   const [seconds, setSeconds] = useState(18 * 60 + 42)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [paused, setPaused] = useState(false)
+  const [paused, setPaused] = useState(true)
   const [muted, setMuted] = useState(false)
   const [lowQuality, setLowQuality] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
@@ -1796,6 +1990,12 @@ function App() {
     return () => window.removeEventListener('keydown', handlePauseKey)
   }, [])
 
+  const beginGame = () => {
+    setShowIntro(false)
+    setPaused(false)
+    setMessage('The brass key is cold in your hand. Search the study.')
+  }
+
   const restartGame = () => {
     setSelected('painting')
     setFound([])
@@ -1803,6 +2003,8 @@ function App() {
     setHauntedRoom(false)
     setGameWon(false)
     setShowWinBanner(false)
+    setShowReplayPrompt(false)
+    setShowIntro(true)
     setNearbyTask(null)
     setHasHammer(false)
     setHasGun(false)
@@ -1825,7 +2027,7 @@ function App() {
     setGems(0)
     setMessage('The exit is sealed. Find the portrait, desk and chest to open the next room.')
     setSeconds(18 * 60 + 42)
-    setPaused(false)
+    setPaused(true)
     setSettingsOpen(false)
   }
 
@@ -1858,6 +2060,7 @@ function App() {
     setGems(0)
     setGameWon(false)
     setShowWinBanner(false)
+    setShowReplayPrompt(false)
     setSelected('haunted')
     setMessage('The haunted chamber has been reset. Find the hammer and weapon again.')
     setPaused(false)
@@ -1934,14 +2137,19 @@ function App() {
     setNearbyTask((current) => current === id ? null : current)
   }
 
+  const finishGame = () => {
+    setGameWon(true)
+    setShowWinBanner(true)
+    setShowReplayPrompt(true)
+    setPaused(true)
+  }
+
   const discoverObject = (id) => {
     setSelected(id)
     if (id === 'key') {
       setFound((items) => items.includes(id) ? items : [...items, id])
       setMessage('You found the final key. The house falls silent.')
-      setGameWon(true)
-      setShowWinBanner(true)
-      window.setTimeout(() => setShowWinBanner(false), 4500)
+      finishGame()
       return
     }
     setFound((items) => items.includes(id) ? items : [...items, id])
@@ -1994,10 +2202,8 @@ function App() {
     if (id === 'key') {
       setFound((items) => items.includes(id) ? items : [...items, id])
       setMessage('You found the final key. The house falls silent.')
-      setGameWon(true)
-      setShowWinBanner(true)
       setNearbyTask(null)
-      window.setTimeout(() => setShowWinBanner(false), 4500)
+      finishGame()
       return
     }
     const task = HAUNTED_TASKS.find((item) => item.id === id)
@@ -2129,6 +2335,17 @@ function App() {
     return () => window.removeEventListener('keydown', handleActionKey)
   }, [actionAvailable, selected, nearbyTask, hasHammer, gems, found])
 
+  useEffect(() => {
+    if (!showReplayPrompt) return undefined
+    const handleReplayKey = (event) => {
+      if (event.key !== 'Enter') return
+      event.preventDefault()
+      restartGame()
+    }
+    window.addEventListener('keydown', handleReplayKey)
+    return () => window.removeEventListener('keydown', handleReplayKey)
+  }, [showReplayPrompt])
+
   return <main className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">✦</span><div><p className="brand-kicker">A QUIET PLACE TO</p><h1>ESCAPE</h1></div></div>
@@ -2139,7 +2356,7 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}</div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && !showReplayPrompt && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{showReplayPrompt && <div className="replay-overlay" role="dialog" aria-modal="true" aria-labelledby="replay-title"><div className="pause-card replay-card"><p className="eyebrow">Escape complete</p><h2 id="replay-title">Would you like to play again?</h2><p>You found the final key and escaped the house.</p><button className="action-button" type="button" onClick={restartGame}>Play again <span>↵ ENTER</span></button></div></div>}</div>
         <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'The exit is sealed. Find the portrait, desk and chest to open the next chamber.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
@@ -2166,6 +2383,7 @@ function App() {
         <div className="hint-footer"><span className="hint-bulb">✧</span><span><b>How to play</b> Click the scene to capture the mouse. Look left or right, move with WASD, then get close and use the task button when it appears.</span></div>
       </aside>
     </section>
+    {showIntro && <BackstoryCinematic onComplete={beginGame} />}
   </main>
 }
 
