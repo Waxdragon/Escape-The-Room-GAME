@@ -10,6 +10,9 @@ const HOTSPOTS = {
   bookshelf: { label: 'Bookcase', short: 'Bookcase', location: 'West wall', icon: '≡' },
   door: { label: 'The exit door', short: 'Exit', location: 'South-east wall', icon: '↗' },
   key: { label: 'The last key', short: 'Last key', location: 'Haunted chamber', icon: '⚿' },
+  mirror: { label: 'The memory mirror', short: 'Mirror', location: 'First floor', icon: '◌' },
+  ownerNote: { label: 'The owner’s last note', short: 'Owner note', location: 'Ground floor', icon: '✎' },
+  secondPortrait: { label: 'The torn family portrait', short: 'Portrait', location: 'Second floor', icon: '◈' },
   hammer: { label: 'The iron hammer', short: 'Hammer', location: 'First floor', icon: '⚒' },
   weapon: { label: 'The rack weapon', short: 'Weapon', location: 'First floor', icon: '⚔' },
   guardDog: { label: 'The guard bulldog', short: 'Bulldog', location: 'First floor', icon: '🐕' },
@@ -17,9 +20,9 @@ const HOTSPOTS = {
   haunted: { label: 'The haunted chamber', short: 'Chamber', location: 'Beyond the study', icon: '☩' },
   cross: { label: 'The Christian cross', short: 'Cross', location: 'First floor', icon: '☩' },
   weapons: { label: 'The weapons rack', short: 'Weapons', location: 'First floor', icon: '⚔' },
-  groundBody: { label: 'The fallen body', short: 'Body', location: 'Ground floor', icon: '†' },
-  groundClue: { label: 'Blood-marked clues', short: 'Clues', location: 'Ground floor', icon: '⌁' },
-  secondBody: { label: 'The silent body', short: 'Body', location: 'Second floor', icon: '†' },
+  groundBody: { label: 'The evidence desk', short: 'Evidence desk', location: 'Ground floor', icon: '†' },
+  groundClue: { label: 'The blood-marked cabinet', short: 'Cabinet', location: 'Ground floor', icon: '⌁' },
+  secondBody: { label: 'The coat trunk', short: 'Coat trunk', location: 'Second floor', icon: '†' },
   secondCross: { label: 'The high cross inscription', short: 'Inscription', location: 'Second floor', icon: '☩' },
 }
 
@@ -35,11 +38,14 @@ const ROOM_TASKS = [
 ]
 const HAUNTED_TASKS = [
   { id: 'guardDog', floor: 'First floor', text: 'Calm the guard bulldog', action: 'Calm the bulldog', actionText: 'The bulldog relaxes and wags its tail. The first-floor route is clear.', reward: 0, position: [-1.6, 5.1], radius: 1.5 },
+  { id: 'mirror', floor: 'First floor', text: 'Look into the memory mirror', action: 'Touch the broken mirror', actionText: 'The reflection moves a heartbeat after you do. A woman mouths: “He hid it below.”', reward: 0, position: [-6.2, 4.55], radius: 1.1 },
   { id: 'cross', floor: 'First floor', text: 'Press the hidden button', action: 'Press the hidden button', actionText: 'A panel opens behind the cross and reveals a crimson gem.', reward: 1, requiresHammer: true, requiresTask: 'guardDog', position: [0, -6.1], radius: 0.9 },
   { id: 'weapons', floor: 'First floor', text: 'Break open the weapons crate', action: 'Break open the crate', actionText: 'The splintered crate contains a violet gem.', reward: 1, requiresHammer: true, requiresTask: 'guardDog', position: [6.9, -6.05], radius: 0.9 },
-  { id: 'groundBody', floor: 'Ground floor', text: 'Open the evidence file', action: 'Open the evidence file', actionText: 'A bloodstained file folds around an amber gem.', reward: 1, position: [-5.4, 1.8], radius: 0.9 },
-  { id: 'groundClue', floor: 'Ground floor', text: 'Unlock the blood-marked cabinet', action: 'Open the old cabinet', actionText: 'Inside the cabinet, a green gem glows beside the clues.', reward: 1, position: [5.6, -4.2], radius: 0.85 },
-  { id: 'secondBody', floor: 'Second floor', text: 'Open the coat file', action: 'Open the coat file', actionText: 'The hidden pocket holds a blue gem.', reward: 1, position: [3.6, 3.2], radius: 0.9 },
+  { id: 'groundBody', floor: 'Ground floor', text: 'Open the evidence desk drawer', action: 'Open the evidence drawer', actionText: 'The desk drawer releases a bloodstained file folded around an amber gem.', reward: 1, position: [-5.4, 1.8], radius: 0.9 },
+  { id: 'ownerNote', floor: 'Ground floor', text: 'Read the owner’s last note', action: 'Read the final note', actionText: 'The note is written in your handwriting: “If you hear me upstairs, do not answer.”', reward: 0, requiresTask: 'groundBody', position: [-9.55, 1.2], radius: 1.1 },
+  { id: 'groundClue', floor: 'Ground floor', text: 'Unlock the blood-marked cabinet', action: 'Open the old cabinet', actionText: 'The cabinet door groans open. Inside, a green gem glows beside the clues.', reward: 1, position: [5.6, -4.2], radius: 0.85 },
+  { id: 'secondBody', floor: 'Second floor', text: 'Open the coat trunk', action: 'Open the coat trunk', actionText: 'The trunk opens to reveal a sealed coat file and a blue gem.', reward: 1, position: [3.6, 3.2], radius: 0.9 },
+  { id: 'secondPortrait', floor: 'Second floor', text: 'Study the torn family portrait', action: 'Study the portrait', actionText: 'The painted eyes are wet. The missing owner is standing behind you in the reflection.', reward: 0, requiresTask: 'secondBody', position: [4.3, -1.65], radius: 1.1 },
   { id: 'secondCross', floor: 'Second floor', text: 'Break the stone panel', action: 'Break the stone panel', actionText: 'Behind the inscription is a final white gem.', reward: 1, requiresHammer: true, position: [5.2, -6.1], radius: 0.9 },
 ]
 const HAMMER_TARGET = { id: 'hammer', floor: 'First floor', position: [2.8, -1.55], radius: 0.9 }
@@ -114,7 +120,7 @@ function MapMarker({ id, x, y, selected, discovered, onSelect }) {
   )
 }
 
-function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, canDiscover = () => true, hauntedRoom = false, paused = false, sensitivity = 1, aiming = false }) {
+function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, onFlashlightToggle, canDiscover = () => true, hauntedRoom = false, paused = false, sensitivity = 1, aiming = false }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
   const keys = useRef({})
   const blockedTarget = useRef(null)
@@ -166,7 +172,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
     const down = (event) => {
       const key = event.key.toLowerCase()
       if (key === 'shift') onAim?.(true)
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', 'c'].includes(key)) {
         event.preventDefault()
         keys.current[key] = true
       }
@@ -183,6 +189,10 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
         jumpVelocity.current = 5.2
         grounded.current = false
         onJump?.('jump')
+      }
+      if (key === 'l' && !event.repeat && !paused) {
+        event.preventDefault()
+        onFlashlightToggle?.()
       }
     }
     const up = (event) => {
@@ -218,7 +228,7 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [camera, gl, onAim, onFloorChange, onJump, onReload, onShoot, paused, sensitivity, aiming])
+  }, [camera, gl, onAim, onFloorChange, onFlashlightToggle, onJump, onReload, onShoot, paused, sensitivity, aiming])
 
   useFrame((_, delta) => {
     if (paused) {
@@ -292,7 +302,8 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
       player.current.y += jumpOffset.current
     }
 
-    camera.position.set(player.current.x, player.current.y, player.current.z)
+    const crouching = Boolean(currentKeys.c)
+    camera.position.set(player.current.x, player.current.y - (crouching ? 0.38 : 0), player.current.z)
     const currentFloor = hauntedRoom ? (player.current.y < -1 ? 'Ground floor' : player.current.y > 5.8 ? 'Second floor' : 'First floor') : 'First floor'
     if (currentFloor !== lastFloor.current) {
       lastFloor.current = currentFloor
@@ -327,7 +338,55 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   return null
 }
 
-function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, onDiscover, onApproach, onLeave, canDiscover, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, hasHammer, hasGun, equipped, aiming, hammerSwing, shot, reloading, ammo, enemiesDefeated, droppedItems, paused, sensitivity, lowQuality, audioSettings, muted, reduceMotion, shotImpacts, sleepingDogs, combatActive, onEnemyAttack, cameraShake = 0, health = 100, gems = 0 }) {
+function Flashlight({ enabled = false, muted = false }) {
+  const rig = useRef()
+  const beam = useRef()
+  const target = useRef()
+  const { camera } = useThree()
+  useFrame(() => {
+    if (!rig.current) return
+    rig.current.position.copy(camera.position)
+    rig.current.quaternion.copy(camera.quaternion)
+    if (beam.current) {
+      beam.current.intensity = enabled && !muted ? 18 : 0
+      if (target.current) beam.current.target = target.current
+    }
+    if (target.current) target.current.updateMatrixWorld()
+  })
+  return <group ref={rig}>
+    <spotLight ref={beam} color="#d8e8ff" intensity={0} distance={13} angle={0.38} penumbra={0.55} decay={1.5} position={[0, -0.08, -0.16]} castShadow />
+    <pointLight color="#d8e8ff" intensity={enabled && !muted ? 0.8 : 0} distance={2.2} position={[0, -0.04, -0.2]} />
+    <object3D ref={target} position={[0, 0, -8]} />
+  </group>
+}
+
+function AtmosphericMotes({ hauntedRoom = false, lowQuality = false }) {
+  const motes = useMemo(() => Array.from({ length: lowQuality ? 12 : hauntedRoom ? 30 : 18 }, (_, index) => ({
+    x: ((index * 37) % 180) / 10 - 9,
+    y: ((index * 23) % 68) / 10 - (hauntedRoom ? 3.5 : 0.2),
+    z: ((index * 19) % 120) / 10 - 6,
+    phase: index * 0.73,
+    scale: 0.012 + (index % 3) * 0.008,
+  })), [hauntedRoom, lowQuality])
+  const particles = useRef([])
+  useFrame(({ clock }) => {
+    particles.current.forEach((particle, index) => {
+      if (!particle) return
+      const mote = motes[index]
+      particle.position.y = mote.y + Math.sin(clock.elapsedTime * 0.35 + mote.phase) * 0.22
+      particle.position.x = mote.x + Math.sin(clock.elapsedTime * 0.18 + mote.phase) * 0.16
+      particle.material.opacity = 0.18 + (Math.sin(clock.elapsedTime * 1.2 + mote.phase) + 1) * 0.09
+    })
+  })
+  return <group>
+    {motes.map((mote, index) => <mesh key={`${mote.x}-${mote.y}-${mote.z}`} ref={(node) => { particles.current[index] = node }} position={[mote.x, mote.y, mote.z]} scale={mote.scale}>
+      <sphereGeometry args={[1, 6, 6]} />
+      <meshBasicMaterial color={hauntedRoom ? '#b9a8dc' : '#e4d4af'} transparent opacity={0.24} depthWrite={false} />
+    </mesh>)}
+  </group>
+}
+
+function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, found, collected, onDiscover, onApproach, onLeave, canDiscover, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, onFlashlightToggle, hasHammer, hasGun, equipped, aiming, hammerSwing, shot, reloading, ammo, enemiesDefeated, droppedItems, paused, sensitivity, lowQuality, audioSettings, muted, reduceMotion, shotImpacts, sleepingDogs, combatActive, onEnemyAttack, cameraShake = 0, health = 100, gems = 0, flashlightOn = false }) {
   const interactive = (id) => ({
     onClick: (event) => { event.stopPropagation(); onSelect(id) },
     onPointerOver: (event) => { event.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -341,6 +400,8 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <hemisphereLight skyColor={hauntedRoom ? '#d9d4ff' : '#b9d6c9'} groundColor={hauntedRoom ? '#3b2834' : '#263b36'} intensity={hauntedRoom ? 0.9 : 0.35} />
       <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 0.8} color={hauntedRoom ? '#e0dcff' : '#f4d3a0'} />
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
+      <AtmosphericMotes hauntedRoom={hauntedRoom} lowQuality={lowQuality} />
+      <Flashlight enabled={flashlightOn} muted={muted || paused} />
       <FloorAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
       <FootstepAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
       <HeartbeatAudio active={hauntedRoom && (combatActive || health < 40)} critical={health < 40} audioSettings={audioSettings} muted={muted || paused} />
@@ -351,14 +412,14 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
         <Rug />
         <Bookcase {...interactive('bookshelf')} />
         <Painting {...interactive('painting')} selected={selected === 'painting'} />
-        <Desk {...interactive('desk')} selected={selected === 'desk'} />
-        <Chest {...interactive('chest')} opened={chestOpened} selected={selected === 'chest'} />
+        <Desk {...interactive('desk')} opened={found.includes('desk')} selected={selected === 'desk'} />
+        <Chest {...interactive('chest')} opened={found.includes('chest') || chestOpened} selected={selected === 'chest'} />
         <ExitDoor open={false} />
         <Plant />
         <BrokenObjects />
         <StudyRats />
       </>}
-      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} onShoot={onShoot} onReload={onReload} onAim={onAim} onFloorChange={onFloorChange} onJump={onJump} hauntedRoom={hauntedRoom} paused={paused} sensitivity={sensitivity} aiming={aiming} />
+      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} onShoot={onShoot} onReload={onReload} onAim={onAim} onFloorChange={onFloorChange} onJump={onJump} onFlashlightToggle={onFlashlightToggle} hauntedRoom={hauntedRoom} paused={paused} sensitivity={sensitivity} aiming={aiming} />
       <CameraShake token={cameraShake} reduceMotion={reduceMotion} />
       <HammerHand active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
       <GunHand active={hauntedRoom && equipped === 'weapon'} shot={shot} reloading={reloading} reduceMotion={reduceMotion} aiming={aiming} />
@@ -1189,14 +1250,20 @@ function HauntedLighting() {
 }
 
 function HauntedLantern({ position, color, intensity, unstable = false, phase = 0 }) {
+  const swing = useRef()
   const light = useRef()
   const bulb = useRef()
   const ceilingY = position[1] < 0 ? 0.02 : position[1] < 5 ? 5.02 : 8.1
   const wireLength = Math.max(0.18, ceilingY - position[1] - 0.28)
+  const pivotHeight = wireLength + 0.28
 
   useFrame(({ clock }) => {
-    if (!unstable || !light.current) return
     const t = clock.elapsedTime + phase
+    if (swing.current) {
+      swing.current.rotation.z = Math.sin(t * 0.78) * 0.09
+      swing.current.rotation.x = Math.sin(t * 0.57 + 0.9) * 0.055
+    }
+    if (!unstable || !light.current) return
     const flicker = Math.sin(t * 8) * 0.12 + Math.sin(t * 19) * 0.08
     const blink = Math.sin(t * 1.8) > -0.35 ? 1 : 0.18
     const brightness = Math.max(0.08, blink * (0.82 + flicker))
@@ -1205,11 +1272,15 @@ function HauntedLantern({ position, color, intensity, unstable = false, phase = 
   })
 
   return <group position={position}>
-    <HangingWire length={wireLength} />
-    <mesh castShadow><cylinderGeometry args={[0.2, 0.2, 0.48, 10]} /><meshStandardMaterial color="#302329" metalness={0.65} roughness={0.35} /></mesh>
-    <mesh position={[0, -0.03, 0]}><sphereGeometry args={[0.13, 12, 10]} /><meshStandardMaterial ref={bulb} color="#ffd18a" emissive={color} emissiveIntensity={1.5} /></mesh>
-    <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.35, 0.18, 8]} /><meshStandardMaterial color="#3a272c" metalness={0.5} /></mesh>
-    <pointLight ref={light} color={color} intensity={intensity} distance={7} decay={1.5} />
+    <group ref={swing} position={[0, pivotHeight, 0]}>
+      <group position={[0, -pivotHeight, 0]}>
+        <HangingWire length={wireLength} />
+        <mesh castShadow><cylinderGeometry args={[0.2, 0.2, 0.48, 10]} /><meshStandardMaterial color="#302329" metalness={0.65} roughness={0.35} /></mesh>
+        <mesh position={[0, -0.03, 0]}><sphereGeometry args={[0.13, 12, 10]} /><meshStandardMaterial ref={bulb} color="#ffd18a" emissive={color} emissiveIntensity={1.5} /></mesh>
+        <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.35, 0.18, 8]} /><meshStandardMaterial color="#3a272c" metalness={0.5} /></mesh>
+        <pointLight ref={light} color={color} intensity={intensity} distance={7} decay={1.5} />
+      </group>
+    </group>
   </group>
 }
 
@@ -1339,6 +1410,7 @@ function HauntedRoomProps({ found }) {
     <HauntedCross position={[-6.5, 2.5, -6.78]} scale={0.72} rotation={[0, 0.15, 0]} />
     <HauntedCross position={[5.2, 7.7, -6.78]} scale={0.9} rotation={[0, -0.12, 0]} />
     <HauntedCross position={[-5.8, -1.45, -6.78]} scale={0.8} rotation={[0, 0.18, 0]} />
+    <HauntedMirror position={[-6.75, 2.25, 4.48]} revealed={found.includes('mirror')} />
     <BrokenPicture position={[-4.2, 2.4, -6.82]} rotation={[0, 0.08, 0]} />
     <BrokenPicture position={[-4.2, 7.35, -6.82]} rotation={[0, -0.08, 0]} />
     <BrokenPicture position={[4.3, -1.65, -6.82]} rotation={[0, 0.12, 0]} />
@@ -1364,6 +1436,21 @@ function HauntedRoomProps({ found }) {
   </>
 }
 
+function HauntedMirror({ position, revealed = false }) {
+  const surface = useRef()
+  useFrame(({ clock }) => {
+    if (!surface.current) return
+    surface.current.material.emissiveIntensity = revealed ? 0.75 + Math.sin(clock.elapsedTime * 3.2) * 0.2 : 0.18
+  })
+  return <group position={position} rotation={[0, Math.PI, 0]}>
+    <mesh castShadow><boxGeometry args={[1.45, 2.15, 0.12]} /><meshStandardMaterial color="#30272d" roughness={0.8} /></mesh>
+    <mesh ref={surface} position={[0, 0, -0.075]}><planeGeometry args={[1.12, 1.78]} /><meshStandardMaterial color={revealed ? '#5f536b' : '#24242d'} emissive={revealed ? '#4e385f' : '#101018'} emissiveIntensity={revealed ? 0.75 : 0.18} metalness={0.2} roughness={0.18} transparent opacity={0.88} /></mesh>
+    <mesh position={[-0.2, 0.25, -0.09]} rotation={[0, 0, -0.28]}><boxGeometry args={[0.035, 1.4, 0.018]} /><meshBasicMaterial color="#c19a87" transparent opacity={0.75} /></mesh>
+    <mesh position={[0.23, -0.18, -0.09]} rotation={[0, 0, 0.36]}><boxGeometry args={[0.03, 1.2, 0.018]} /><meshBasicMaterial color="#c19a87" transparent opacity={0.65} /></mesh>
+    {revealed && <pointLight position={[0, 0, -0.35]} color="#aa78cc" intensity={2.2} distance={3.8} />}
+  </group>
+}
+
 function StoryNotes() {
   return <>
     <StoryNote position={[-2.65, 2.25, -6.72]} accent="#9e4e48" />
@@ -1386,12 +1473,44 @@ function HauntedTaskProps({ found }) {
   return <>
     <mesh position={[0, 2.05, -6.55]} castShadow><boxGeometry args={[0.34, 0.22, 0.12]} /><meshStandardMaterial color="#8c3237" emissive="#5d171f" emissiveIntensity={0.5} /></mesh>
     <SmashableCrate position={[6.9, 0.62, -5.82]} broken={found.includes('weapons')} />
-    <mesh position={[-5.4, -4.12, 1.8]} rotation={[0.08, -0.25, 0.12]} castShadow><boxGeometry args={[0.62, 0.08, 0.42]} /><meshStandardMaterial color="#a77d67" roughness={0.85} /></mesh>
-    <mesh position={[5.6, -4.22, -4.18]} castShadow><boxGeometry args={[0.72, 0.6, 0.34]} /><meshStandardMaterial color="#563431" roughness={0.88} /></mesh>
-    <mesh position={[3.6, 5.58, 3.2]} rotation={[0, 0.35, -0.1]} castShadow><boxGeometry args={[0.62, 0.08, 0.42]} /><meshStandardMaterial color="#7e91a7" roughness={0.85} /></mesh>
+    <EvidenceDesk position={[-5.4, -4.82, 1.8]} opened={found.includes('groundBody')} />
+    <BloodCabinet position={[5.6, -4.82, -4.18]} opened={found.includes('groundClue')} />
+    <CoatTrunk position={[3.6, 5.02, 3.2]} opened={found.includes('secondBody')} />
     <mesh position={[5.2, 8.22, -6.55]} castShadow><boxGeometry args={[0.9, 0.14, 0.08]} /><meshStandardMaterial color="#766a85" roughness={0.9} /></mesh>
     {HAUNTED_TASKS.map((task) => task.reward > 0 && found.includes(task.id) && <TaskGem key={task.id} position={GEM_POSITIONS[task.id]} />)}
   </>
+}
+
+function EvidenceDesk({ position, opened = false }) {
+  return <group position={position} rotation={[0, -0.12, 0]}>
+    <mesh position={[0, 0.82, 0]} castShadow><boxGeometry args={[1.7, 0.16, 0.8]} /><meshStandardMaterial color="#594033" roughness={0.88} /></mesh>
+    {[-0.62, 0.62].map((x) => <mesh key={x} position={[x, 0.38, 0]} castShadow><boxGeometry args={[0.14, 0.76, 0.58]} /><meshStandardMaterial color="#3b2929" roughness={0.92} /></mesh>)}
+    <mesh position={[0, opened ? 0.58 : 0.68, opened ? -0.54 : -0.42]} castShadow><boxGeometry args={[1.05, 0.14, 0.38]} /><meshStandardMaterial color="#76503a" roughness={0.82} /></mesh>
+    <mesh position={[0, opened ? 0.84 : 0.71, opened ? -0.55 : -0.43]} rotation={[opened ? -0.24 : 0, 0, 0]}><boxGeometry args={[0.72, 0.025, 0.38]} /><meshStandardMaterial color="#b99a78" roughness={0.95} /></mesh>
+    {opened && <pointLight position={[0, 0.74, -0.48]} color="#d88b65" intensity={1.1} distance={2.2} />}
+  </group>
+}
+
+function BloodCabinet({ position, opened = false }) {
+  return <group position={position}>
+    <mesh position={[0, 0.95, 0]} castShadow><boxGeometry args={[1.75, 1.9, 0.58]} /><meshStandardMaterial color="#3c292c" roughness={0.92} /></mesh>
+    <mesh position={[0, 1.02, opened ? -0.52 : -0.34]} rotation={[0, opened ? -0.75 : 0, 0]} castShadow><boxGeometry args={[1.58, 1.65, 0.08]} /><meshStandardMaterial color="#694139" roughness={0.84} /></mesh>
+    <mesh position={[0, 1.02, opened ? -0.58 : -0.39]}><boxGeometry args={[0.07, 0.34, 0.035]} /><meshStandardMaterial color="#b88b52" metalness={0.7} roughness={0.28} /></mesh>
+    <mesh position={[0, 1.03, -0.38]}><boxGeometry args={[0.62, 0.035, 0.02]} /><meshStandardMaterial color="#8b3038" emissive="#4c151d" emissiveIntensity={0.7} /></mesh>
+    {opened && <>
+      <mesh position={[0, 1.02, -0.39]}><octahedronGeometry args={[0.16, 0]} /><meshStandardMaterial color="#9fe6b0" emissive="#3eab68" emissiveIntensity={1.7} metalness={0.35} roughness={0.2} /></mesh>
+      <pointLight position={[0, 1.02, -0.46]} color="#65d98b" intensity={1.8} distance={2.5} />
+    </>}
+  </group>
+}
+
+function CoatTrunk({ position, opened = false }) {
+  return <group position={position} rotation={[0, 0.35, 0]}>
+    <RoundedBox args={[1.55, 0.72, 0.95]} radius={0.08} smoothness={3} castShadow><meshStandardMaterial color="#53616a" roughness={0.82} /></RoundedBox>
+    <mesh position={[0, opened ? 0.58 : 0.43, opened ? -0.22 : 0]} rotation={[opened ? -0.5 : 0, 0, 0]} castShadow><boxGeometry args={[1.6, 0.12, 0.98]} /><meshStandardMaterial color="#718493" roughness={0.72} /></mesh>
+    <mesh position={[0, 0.06, -0.5]}><boxGeometry args={[1.05, 0.08, 0.06]} /><meshStandardMaterial color="#b4c2c6" metalness={0.72} roughness={0.3} /></mesh>
+    {opened && <mesh position={[0, 0.48, -0.08]} rotation={[0.18, 0.2, 0]}><boxGeometry args={[0.62, 0.04, 0.4]} /><meshStandardMaterial color="#7e91a7" roughness={0.85} /></mesh>}
+  </group>
 }
 
 function TaskGem({ position }) {
@@ -1548,17 +1667,24 @@ function OldGun({ position, rotation }) {
 
 function RoomLighting() {
   return <>
-    <CeilingLamp position={[-4.2, 5.72, -1.9]} color="#f7d49b" intensity={7} />
-    <CeilingLamp position={[0, 5.72, -2.4]} color="#ffdca7" intensity={8} />
-    <CeilingLamp position={[4.2, 5.72, -1.4]} color="#e9b4ff" intensity={5} />
+    <CeilingLamp position={[-4.2, 5.72, -1.9]} color="#f7d49b" intensity={7} phase={0.2} />
+    <CeilingLamp position={[0, 5.72, -2.4]} color="#ffdca7" intensity={8} phase={1.8} />
+    <CeilingLamp position={[4.2, 5.72, -1.4]} color="#e9b4ff" intensity={5} phase={3.4} />
     <WallSconce position={[-3.8, 4.25, -5.03]} color="#ffc078" phase={0.5} />
     <WallSconce position={[0, 4.25, -5.03]} color="#ffcf83" phase={2.2} unstable />
     <WallSconce position={[3.8, 4.25, -5.03]} color="#c3d8ff" phase={4.1} />
   </>
 }
 
-function CeilingLamp({ position, color, intensity }) {
-  return <group position={position}>
+function CeilingLamp({ position, color, intensity, phase = 0 }) {
+  const lamp = useRef()
+  useFrame(({ clock }) => {
+    if (!lamp.current) return
+    const t = clock.elapsedTime + phase
+    lamp.current.rotation.z = Math.sin(t * 0.92) * 0.075
+    lamp.current.rotation.x = Math.sin(t * 0.68 + 0.7) * 0.045
+  })
+  return <group ref={lamp} position={position}>
     <HangingWire length={0.34} />
     <mesh castShadow><cylinderGeometry args={[0.06, 0.06, 0.45, 10]} /><meshStandardMaterial color="#34251f" metalness={0.5} /></mesh>
     <mesh position={[0, -0.3, 0]} castShadow><sphereGeometry args={[0.2, 16, 10]} /><meshStandardMaterial color="#e4b56c" emissive={color} emissiveIntensity={0.8} /></mesh>
@@ -1840,11 +1966,13 @@ function Painting({ selected, ...props }) {
   </group>
 }
 
-function Desk({ selected, ...props }) {
+function Desk({ opened = false, selected, ...props }) {
   return <group position={[4.55, 0, -3.55]} {...props}>
     <mesh position={[0, 1.25, 0]} castShadow><boxGeometry args={[2.45, 0.2, 1.05]} /><meshStandardMaterial color="#6e4932" roughness={0.65} /></mesh>
     {[-0.92, 0.92].map((x) => <mesh key={x} position={[x, 0.6, 0]} castShadow><boxGeometry args={[0.18, 1.3, 0.8]} /><meshStandardMaterial color="#513627" /></mesh>)}
-    <mesh position={[0, 1.62, -0.2]} castShadow><boxGeometry args={[0.85, 0.6, 0.5]} /><meshStandardMaterial color="#3e2a22" /></mesh>
+    <mesh position={[0, 1.62, -0.2]} castShadow><boxGeometry args={[0.85, 0.6, 0.5]} /><meshStandardMaterial color="#3e2a22" roughness={0.75} /></mesh>
+    <mesh position={[0, opened ? 1.42 : 1.62, opened ? -0.42 : -0.2]} castShadow><boxGeometry args={[0.92, 0.16, 0.5]} /><meshStandardMaterial color="#8a5a3b" roughness={0.7} /></mesh>
+    {opened && <mesh position={[0, 1.5, -0.43]}><boxGeometry args={[0.58, 0.025, 0.32]} /><meshStandardMaterial color="#d0b28a" roughness={0.95} /></mesh>}
     <mesh position={[0, 1.95, 0.12]} castShadow><cylinderGeometry args={[0.18, 0.18, 0.42, 24]} /><meshStandardMaterial color="#b99455" metalness={0.6} /></mesh>
     <mesh position={[0, 2.18, 0.12]} castShadow><sphereGeometry args={[0.35, 20, 12]} /><meshStandardMaterial color="#e2b66d" emissive="#cc762f" emissiveIntensity={0.45} /></mesh>
     {selected && <pointLight position={[0, 2, 0]} color="#ffbd67" intensity={4} distance={3} />}
@@ -1916,9 +2044,9 @@ const CLUES = {
   haunted: { title: 'The haunted chamber', text: 'The walls are covered in crosses. A ritual table, old weapons and silent bodies fill the darkness. Find the final key.', action: 'Explore the chamber' },
   cross: { text: 'The cross has fresh scratches beneath it. Press the hidden button to open a panel and claim the gem inside.', action: 'Press the hidden button' },
   weapons: { text: 'A battered crate is wedged beside the weapons rack. Break it open to search for a gem.', action: 'Break open the crate' },
-  groundBody: { text: 'The body is cold, but an evidence file is tucked beneath its hand. Open it to find what was hidden.', action: 'Open the evidence file' },
-  groundClue: { text: 'Three faded marks stop beside an old cabinet. Unlock it to reveal the gem beside the final clue.', action: 'Open the old cabinet' },
-  secondBody: { text: 'A silent figure lies beneath the blue light. A sealed coat file contains something valuable.', action: 'Open the coat file' },
+  groundBody: { text: 'The evidence desk is covered in dust. Its shallow drawer is jammed around a bloodstained file.', action: 'Open the evidence drawer' },
+  groundClue: { text: 'Three faded marks stop beside an old cabinet. Unlock its swollen door to reveal the gem beside the final clue.', action: 'Open the old cabinet' },
+  secondBody: { text: 'A silent figure lies beneath the blue light. The nearby coat trunk holds a sealed file.', action: 'Open the coat trunk' },
   secondCross: { text: 'The high inscription hides a thin stone panel. Break it to expose the last gem.', action: 'Break the stone panel' },
 }
 
@@ -2014,6 +2142,7 @@ function App() {
   const [cameraShake, setCameraShake] = useState(0)
   const [shot, setShot] = useState(0)
   const [aiming, setAiming] = useState(false)
+  const [flashlightOn, setFlashlightOn] = useState(false)
   const [sleepingDogs, setSleepingDogs] = useState([false, false])
   const [shotImpacts, setShotImpacts] = useState([])
   const [ammo, setAmmo] = useState(6)
@@ -2092,6 +2221,8 @@ function App() {
         victory: { start: 240, end: 760, duration: 0.55, wave: 'sine', level: 1.1 },
         jump: { start: 180, end: 340, duration: 0.12, wave: 'triangle', level: 0.35 },
         land: { start: 90, end: 42, duration: 0.18, wave: 'sine', level: 0.5 },
+        flashback: { start: 92, end: 760, duration: 0.72, wave: 'sine', level: 0.62 },
+        switch: { start: 420, end: 980, duration: 0.1, wave: 'square', level: 0.28 },
       }
       const profile = profiles[type] || profiles.fire
       oscillator.type = profile.wave
@@ -2105,6 +2236,19 @@ function App() {
       oscillator.connect(filter).connect(gain).connect(context.destination)
       oscillator.start(now)
       oscillator.stop(now + profile.duration + 0.03)
+      if (type === 'flashback') {
+        const echo = context.createOscillator()
+        const echoGain = context.createGain()
+        echo.type = 'triangle'
+        echo.frequency.setValueAtTime(196, now + 0.2)
+        echo.frequency.exponentialRampToValueAtTime(520, now + 0.72)
+        echoGain.gain.setValueAtTime(0.001, now)
+        echoGain.gain.exponentialRampToValueAtTime(volume * 0.3, now + 0.22)
+        echoGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9)
+        echo.connect(filter).connect(echoGain).connect(context.destination)
+        echo.start(now + 0.18)
+        echo.stop(now + 0.94)
+      }
     }
     if (context.state === 'suspended') context.resume().then(schedule).catch(() => {})
     else schedule()
@@ -2186,6 +2330,7 @@ function App() {
   const showMemoryEcho = (text) => {
     if (memoryTimer.current) window.clearTimeout(memoryTimer.current)
     setMemoryEcho(text)
+    playWeaponSound('flashback', 'ambience')
     memoryTimer.current = window.setTimeout(() => setMemoryEcho(null), 3600)
   }
 
@@ -2248,6 +2393,7 @@ function App() {
     setHammerSwing(0)
     setCameraShake(0)
     setAiming(false)
+    setFlashlightOn(false)
     dogSleepTimers.current.forEach((timer) => window.clearTimeout(timer))
     dogSleepTimers.current = []
     setSleepingDogs([false, false])
@@ -2282,6 +2428,7 @@ function App() {
     setCameraShake(0)
     setShot(0)
     setAiming(false)
+    setFlashlightOn(false)
     dogSleepTimers.current.forEach((timer) => window.clearTimeout(timer))
     dogSleepTimers.current = []
     setSleepingDogs([false, false])
@@ -2314,6 +2461,15 @@ function App() {
   const handleJump = (event) => {
     setCameraShake((value) => value + 1)
     playWeaponSound(event === 'land' ? 'land' : 'jump', 'ambience')
+  }
+
+  const handleFlashlightToggle = () => {
+    setFlashlightOn((value) => {
+      const nextValue = !value
+      playWeaponSound('switch', 'ambience')
+      showTaskNotice(nextValue ? 'FLASHLIGHT ON' : 'FLASHLIGHT OFF', nextValue ? 'A narrow beam cuts through the dark.' : 'The darkness closes around you.', '◉')
+      return nextValue
+    })
   }
 
   const handleFloorChange = (floor) => {
@@ -2501,9 +2657,14 @@ function App() {
       setCameraShake((value) => value + 1)
     }
     setNearbyTask(null)
-    setMessage(`${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.`)
-    playWeaponSound('gem', 'ambience')
-    showTaskNotice('GEM RECOVERED', `${task.actionText} ${gems + task.reward} of ${GEM_REQUIREMENT} gems collected.`, '◇')
+    setMessage(task.reward > 0 ? `${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.` : task.actionText)
+    if (task.reward > 0) {
+      playWeaponSound('gem', 'ambience')
+      showTaskNotice('GEM RECOVERED', `${task.actionText} ${gems + task.reward} of ${GEM_REQUIREMENT} gems collected.`, '◇')
+    } else {
+      showMemoryEcho(task.actionText)
+      showTaskNotice('MEMORY RECOVERED', task.actionText, '◌')
+    }
   }
 
   const onBlocked = (id) => {
@@ -2648,7 +2809,7 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} cameraShake={cameraShake} health={health} gems={gems} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} onJump={handleJump} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} />{floorBanner && <div className="floor-banner" role="status"><span className="floor-banner-kicker">NOW ENTERING</span><strong>{floorBanner.toUpperCase()}</strong><span className="floor-banner-line" /></div>}{memoryEcho && <div className="memory-echo" role="status"><span>✧</span><em>{memoryEcho}</em></div>}{taskNotice && <div className="task-toast" role="status"><span className="task-toast-icon">{taskNotice.icon}</span><div><p>{taskNotice.title}</p><strong>{taskNotice.text}</strong></div></div>}{hauntedRoom && nearbyTask && !paused && <div className={`interaction-prompt ${actionAvailable ? 'ready' : 'locked'}`}><span className="interaction-key">{actionAvailable ? 'ENTER' : 'LOCKED'}</span><strong>{actionAvailable ? selected === 'key' ? 'TAKE THE FINAL KEY' : selected === 'hammer' ? 'PICK UP THE HAMMER' : selected === 'weapon' ? 'TAKE THE WEAPON' : selected === 'guardDog' || selected === 'guardDog2' ? 'CALM THE BULLDOG' : `INTERACT WITH ${HOTSPOTS[selected]?.short?.toUpperCase() || 'OBJECT'}` : 'COMPLETE EARLIER OBJECTIVES'}</strong></div>}<div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> J JUMP <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && !showReplayPrompt && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && health < 40 && <div className="damage-vignette" aria-hidden="true" />}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{showReplayPrompt && <div className="replay-overlay" role="dialog" aria-modal="true" aria-labelledby="replay-title"><div className="pause-card replay-card"><p className="eyebrow">Escape complete</p><h2 id="replay-title">Would you like to play again?</h2><p>You found the final key and escaped the house.</p><div className="completion-stats"><div><b>{time}</b><small>TIME LEFT</small></div><div><b>{gems}/{GEM_REQUIREMENT}</b><small>GEMS</small></div><div><b>{enemiesDefeated}</b><small>HUNTERS</small></div></div><button className="action-button" type="button" onClick={restartGame}>Play again <span>↵ ENTER</span></button><button className="secondary-button secret-search-button" type="button" onClick={searchForOwner}>Search for the missing owner <span>↗</span></button></div></div>}{secretEnding && <div className="replay-overlay secret-ending" role="dialog" aria-modal="true"><div className="pause-card replay-card"><p className="eyebrow">A hidden ending</p><h2>The house keeps one more secret.</h2><p>You turn the second key. Upstairs, a man whispers your name from behind the wall. His hand presses against the other side — then the house goes quiet.</p><p className="secret-quote">“You were supposed to leave the key outside.”</p><button className="action-button" type="button" onClick={restartGame}>Begin another investigation <span>↵</span></button></div></div>}</div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} cameraShake={cameraShake} health={health} gems={gems} flashlightOn={flashlightOn} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} onJump={handleJump} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} />{floorBanner && <div className="floor-banner" role="status"><span className="floor-banner-kicker">NOW ENTERING</span><strong>{floorBanner.toUpperCase()}</strong><span className="floor-banner-line" /></div>}{memoryEcho && <><div className="flashback-wash" aria-hidden="true" /><div className="memory-echo" role="status"><span>✧</span><em>{memoryEcho}</em></div></>}{taskNotice && <div className="task-toast" role="status"><span className="task-toast-icon">{taskNotice.icon}</span><div><p>{taskNotice.title}</p><strong>{taskNotice.text}</strong></div></div>}{hauntedRoom && nearbyTask && !paused && <div className={`interaction-prompt ${actionAvailable ? 'ready' : 'locked'}`}><span className="interaction-key">{actionAvailable ? 'ENTER' : 'LOCKED'}</span><strong>{actionAvailable ? selected === 'key' ? 'TAKE THE FINAL KEY' : selected === 'hammer' ? 'PICK UP THE HAMMER' : selected === 'weapon' ? 'TAKE THE WEAPON' : selected === 'guardDog' || selected === 'guardDog2' ? 'CALM THE BULLDOG' : `INTERACT WITH ${HOTSPOTS[selected]?.short?.toUpperCase() || 'OBJECT'}` : 'COMPLETE EARLIER OBJECTIVES'}</strong></div>}<div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> J JUMP <span>·</span> C CROUCH <span>·</span> L LIGHT <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && !showReplayPrompt && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && health < 40 && <div className="damage-vignette" aria-hidden="true" />}{flashlightOn && <div className="flashlight-hud"><span className="flashlight-indicator" /> FLASHLIGHT ON <small>L TO TOGGLE</small></div>}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{showReplayPrompt && <div className="replay-overlay" role="dialog" aria-modal="true" aria-labelledby="replay-title"><div className="pause-card replay-card"><p className="eyebrow">Escape complete</p><h2 id="replay-title">Would you like to play again?</h2><p>You found the final key and escaped the house.</p><div className="completion-stats"><div><b>{time}</b><small>TIME LEFT</small></div><div><b>{gems}/{GEM_REQUIREMENT}</b><small>GEMS</small></div><div><b>{enemiesDefeated}</b><small>HUNTERS</small></div></div><button className="action-button" type="button" onClick={restartGame}>Play again <span>↵ ENTER</span></button><button className="secondary-button secret-search-button" type="button" onClick={searchForOwner}>Search for the missing owner <span>↗</span></button></div></div>}{secretEnding && <div className="replay-overlay secret-ending" role="dialog" aria-modal="true"><div className="pause-card replay-card"><p className="eyebrow">A hidden ending</p><h2>The house keeps one more secret.</h2><p>You turn the second key. Upstairs, a man whispers your name from behind the wall. His hand presses against the other side — then the house goes quiet.</p><p className="secret-quote">“You were supposed to leave the key outside.”</p><button className="action-button" type="button" onClick={restartGame}>Begin another investigation <span>↵</span></button></div></div>}</div>
         <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'The exit is sealed. Find the portrait, desk and chest to open the next chamber.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
