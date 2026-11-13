@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Float, RoundedBox } from '@react-three/drei'
+import { ContactShadows, Float, RoundedBox, useAnimations, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+import { clone as cloneSkinnedModel } from 'three/examples/jsm/utils/SkeletonUtils.js'
+
+useGLTF.preload('/models/dog.glb')
+useGLTF.preload('/models/rat-pack.glb')
 
 const HOTSPOTS = {
   desk: { label: 'Writing desk', short: 'Desk', location: 'East wall', icon: '⌁' },
@@ -402,6 +406,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
       <AtmosphericMotes hauntedRoom={hauntedRoom} lowQuality={lowQuality} />
       <Flashlight enabled={flashlightOn} muted={muted || paused} />
+      <BackgroundMusic volume={audioSettings.music} muted={muted} />
       <FloorAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
       <FootstepAudio hauntedRoom={hauntedRoom} audioSettings={audioSettings} muted={muted || paused} />
       <HeartbeatAudio active={hauntedRoom && (combatActive || health < 40)} critical={health < 40} audioSettings={audioSettings} muted={muted || paused} />
@@ -422,6 +427,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} onShoot={onShoot} onReload={onReload} onAim={onAim} onFloorChange={onFloorChange} onJump={onJump} onFlashlightToggle={onFlashlightToggle} hauntedRoom={hauntedRoom} paused={paused} sensitivity={sensitivity} aiming={aiming} />
       <CameraShake token={cameraShake} reduceMotion={reduceMotion} />
       <HammerHand active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
+      <HammerImpactEffect active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
       <GunHand active={hauntedRoom && equipped === 'weapon'} shot={shot} reloading={reloading} reduceMotion={reduceMotion} aiming={aiming} />
       <ShotImpactEffects impacts={shotImpacts} />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />
@@ -472,6 +478,7 @@ function HammerHand({ active, swing = 0 }) {
     const offset = animatedPosition.current.clone().applyQuaternion(camera.quaternion)
     hand.current.position.copy(camera.position).add(offset)
     hand.current.quaternion.copy(camera.quaternion)
+    hand.current.scale.setScalar(1.12)
     hand.current.rotateX(baseRotation[0] - windup * 0.35 + hit * 0.55)
     hand.current.rotateY(baseRotation[1] + windup * 0.18)
     hand.current.rotateZ(baseRotation[2] + windup * 0.55 - hit * 2.4)
@@ -482,6 +489,40 @@ function HammerHand({ active, swing = 0 }) {
     <mesh position={[0, -0.1, 0]} renderOrder={20}><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
     <mesh position={[0, 0.22, 0]} renderOrder={20}><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} depthTest={false} /></mesh>
     <mesh position={[0, 0.22, 0.13]} renderOrder={20}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} depthTest={false} /></mesh>
+  </group>
+}
+
+function HammerImpactEffect({ active, swing = 0 }) {
+  const effect = useRef()
+  const lastSwing = useRef(swing)
+  const started = useRef(-10)
+  const { camera } = useThree()
+
+  useFrame(({ clock }) => {
+    if (!effect.current) return
+    if (swing !== lastSwing.current) {
+      lastSwing.current = swing
+      started.current = clock.elapsedTime
+    }
+    const elapsed = clock.elapsedTime - started.current
+    const visible = active && elapsed >= 0 && elapsed < 0.42
+    effect.current.visible = visible
+    if (!visible) return
+    const progress = THREE.MathUtils.clamp(elapsed / 0.42, 0, 1)
+    effect.current.position.copy(camera.position)
+    effect.current.quaternion.copy(camera.quaternion)
+    effect.current.translateZ(-0.72)
+    effect.current.translateY(-0.18)
+    effect.current.scale.setScalar(0.4 + progress * 1.8)
+    effect.current.children.forEach((spark, index) => {
+      spark.rotation.z = index * 1.2 + progress * 4
+      spark.material.opacity = 0.9 * (1 - progress)
+    })
+  })
+
+  return <group ref={effect} visible={false} renderOrder={30}>
+    <mesh rotation={[0, 0, Math.PI / 4]}><ringGeometry args={[0.18, 0.24, 8]} /><meshBasicMaterial color="#e7c27b" transparent opacity={0.9} depthTest={false} /></mesh>
+    {[0, 1, 2, 3].map((index) => <mesh key={index} position={[Math.cos(index * Math.PI / 2) * 0.28, Math.sin(index * Math.PI / 2) * 0.28, 0]}><boxGeometry args={[0.26, 0.025, 0.025]} /><meshBasicMaterial color="#f6d28a" transparent opacity={0.9} depthTest={false} /></mesh>)}
   </group>
 }
 
@@ -865,9 +906,57 @@ function HeartbeatAudio({ active = false, critical = false, audioSettings = {}, 
   return null
 }
 
+function BackgroundMusic({ volume = 0.5, muted = false }) {
+  const music = useRef(null)
+  const started = useRef(false)
+  const volumeRef = useRef(volume)
+  const mutedRef = useRef(muted)
+
+  useEffect(() => {
+    volumeRef.current = volume
+    mutedRef.current = muted
+    if (music.current) music.current.volume = muted ? 0 : Math.max(0, Math.min(1, volume))
+    if (music.current && started.current && !muted && volume > 0) music.current.play().catch(() => {})
+  }, [volume, muted])
+
+  useEffect(() => {
+    const player = new Audio('/audio/background-horror.mp3')
+    player.loop = true
+    player.preload = 'auto'
+    player.volume = mutedRef.current ? 0 : volumeRef.current
+    const start = () => {
+      started.current = true
+      player.volume = mutedRef.current ? 0 : volumeRef.current
+      player.play().catch(() => {})
+    }
+    const restartIfNeeded = () => {
+      if (started.current) {
+        player.currentTime = 0
+        player.play().catch(() => {})
+      }
+    }
+    music.current = player
+    window.addEventListener('pointerdown', start)
+    window.addEventListener('keydown', start)
+    window.addEventListener('game-audio-unlock', start)
+    player.addEventListener('ended', restartIfNeeded)
+    return () => {
+      window.removeEventListener('pointerdown', start)
+      window.removeEventListener('keydown', start)
+      window.removeEventListener('game-audio-unlock', start)
+      player.removeEventListener('ended', restartIfNeeded)
+      player.pause()
+      player.src = ''
+      music.current = null
+    }
+  }, [])
+
+  return null
+}
+
 function FloorAudio({ hauntedRoom, audioSettings = {}, muted = false }) {
   const { camera, gl } = useThree()
-  const { ambience = 1, music = 0.5 } = audioSettings
+  const { ambience = 1 } = audioSettings
   const audio = useRef(null)
 
   useEffect(() => {
@@ -955,7 +1044,7 @@ function FloorAudio({ hauntedRoom, audioSettings = {}, muted = false }) {
     const { context, layers } = activeAudio
     const floorIndex = hauntedRoom ? (camera.position.y < -1 ? 1 : camera.position.y > 4 ? 2 : 0) : 0
     const ambienceLevel = muted ? 0 : Math.max(0, ambience)
-    const musicLevel = muted ? 0 : Math.max(0, music)
+    const musicLevel = 0
     layers.forEach((layer, index) => {
       const level = layer.category === 'music' ? musicLevel : ambienceLevel
       const target = index === floorIndex ? layer.base * level : 0.004 * level
@@ -1117,15 +1206,28 @@ function GuardDog({ position, path, speed = 0.5, anchor = [position[0], position
   const jaw = useRef()
   const tongue = useRef()
   const tail = useRef()
+  const legs = useRef([])
   const rope = useRef()
   const collar = useRef()
-  const legs = useRef([])
   const collarWorld = useRef(new THREE.Vector3())
+  const activeAnimation = useRef(null)
+  const { scene, animations } = useGLTF('/models/dog.glb')
+  const model = useMemo(() => cloneSkinnedModel(scene), [scene])
+  const { actions } = useAnimations(animations, dog)
   const ropeStart = useMemo(() => new THREE.Vector3(anchor[0], 0.62, anchor[2]), [anchor])
   const ropeAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
 
+  useEffect(() => {
+    const name = sleeping ? null : reacted ? 'walksent' : 'walk'
+    if (!name || !actions[name]) return undefined
+    const action = actions[name]
+    action.reset().fadeIn(0.25).play()
+    activeAnimation.current = name
+    return () => action.fadeOut(0.2)
+  }, [actions, reacted, sleeping])
+
   useFrame(({ clock }) => {
-    if (!dog.current || !head.current || !rope.current || !collar.current) return
+    if (!dog.current || !rope.current || !collar.current) return
     const t = clock.elapsedTime + phase
     const routine = t % 15
     const eating = routine > 6.2 && routine < 9.05
@@ -1149,33 +1251,32 @@ function GuardDog({ position, path, speed = 0.5, anchor = [position[0], position
     dog.current.rotation.y = eating ? 0.34 : path?.length > 1 ? patrolRotation : Math.sin(t * 0.46) * 0.28
     dog.current.rotation.z = barking ? Math.sin(t * 22) * 0.035 : reacted ? Math.sin(t * 5.5) * 0.08 : 0
 
-    head.current.position.set(0, eating ? 0.53 : 0.62, eating ? 0.83 : 0.68)
-    head.current.rotation.x = eating ? 0.52 : 0
-    head.current.rotation.z = barking ? Math.sin(t * 24) * 0.035 : 0
-    jaw.current.rotation.x = barking ? 0.32 + Math.abs(Math.sin(t * 20)) * 0.12 : eating ? 0.24 : panting ? 0.16 : 0.03
-    tongue.current.visible = panting || barking || eating
-    tongue.current.scale.y = eating ? 0.65 : panting ? 1.1 : 0.82
-    tongue.current.position.z = eating ? 0.43 : 0.39
-    tail.current.rotation.z = 0.2 + Math.sin(t * (barking ? 12 : reacted ? 10 : 4.5)) * (barking ? 0.26 : reacted ? 0.3 : 0.13)
-
-    legs.current.forEach((leg, index) => {
-      if (leg) leg.rotation.x = step * (index % 2 === 0 ? 1 : -1)
-    })
-
+    const nextAnimation = sleeping ? null : eating ? 'iddle' : reacted ? 'walksent' : 'walk'
+    if (nextAnimation && actions[nextAnimation] && (activeAnimation.current !== nextAnimation || !actions[nextAnimation].isRunning())) {
+      if (activeAnimation.current && actions[activeAnimation.current]) actions[activeAnimation.current].fadeOut(0.2)
+      actions[nextAnimation].reset().fadeIn(0.2).play()
+      activeAnimation.current = nextAnimation
+    }
+    if (sleeping && activeAnimation.current) {
+      if (actions[activeAnimation.current]) actions[activeAnimation.current].stop()
+      activeAnimation.current = null
+    }
+    dog.current.scale.y = sleeping ? 0.72 : 1
     if (sleeping) {
-      dog.current.position.set(position[0], position[1] - 0.12, position[2])
+      // Rest the imported rig on the floor instead of playing its idle clip.
+      // The idle clip nods the head, which looks awake after calming.
+      dog.current.position.set(position[0], position[1], position[2])
       dog.current.rotation.y = 0.35
       dog.current.rotation.z = -0.38
-      dog.current.scale.y = 0.72
-      head.current.position.set(0, 0.42, 0.78)
-      head.current.rotation.x = 0.78
-      head.current.rotation.z = 0
-      jaw.current.rotation.x = 0.02
-      tongue.current.visible = false
-      tail.current.rotation.z = -0.5
-      legs.current.forEach((leg) => { if (leg) leg.rotation.x = 0 })
-    } else {
-      dog.current.scale.y = 1
+      ;[
+        ['DEF-thigh.L.001', 0.95], ['DEF-thigh.R.001', 0.95],
+        ['DEF-shin.L', -1.15], ['DEF-shin.R', -1.15],
+        ['DEF-front_thigh.L.001', -0.8], ['DEF-front_thigh.R.001', -0.8],
+        ['DEF-front_shin.L', 1.05], ['DEF-front_shin.R', 1.05],
+      ].forEach(([boneName, rotationX]) => {
+        const bone = model.getObjectByName(boneName)
+        if (bone) bone.rotation.x = rotationX
+      })
     }
 
     collar.current.getWorldPosition(collarWorld.current)
@@ -1191,6 +1292,9 @@ function GuardDog({ position, path, speed = 0.5, anchor = [position[0], position
     <mesh position={[anchor[0], 0.22, anchor[2]]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[0.28, 0.045, 8, 18]} /><meshStandardMaterial color="#8c756c" roughness={0.85} /></mesh>
     <mesh ref={rope} castShadow><cylinderGeometry args={[0.045, 0.045, 1, 8]} /><meshStandardMaterial color="#aa8776" roughness={0.92} /></mesh>
     <group ref={dog} position={position}>
+      <primitive object={model} position={[0, -0.13, 0]} rotation={[0, Math.PI, 0]} scale={1.6} />
+      <mesh ref={collar} position={[0, 0.72, 0.48]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.23, 0.04, 8, 16]} /><meshStandardMaterial color="#c07a56" metalness={0.55} roughness={0.35} /></mesh>
+      {false && <>
       <mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[0.92, 0.58, 1.2]} /><meshStandardMaterial color="#3a2529" roughness={0.92} /></mesh>
       <mesh position={[0, 0.64, -0.03]} castShadow><boxGeometry args={[1.02, 0.16, 0.9]} /><meshStandardMaterial color="#4a2b30" roughness={0.9} /></mesh>
       <group ref={head} position={[0, 0.62, 0.68]}>
@@ -1208,6 +1312,7 @@ function GuardDog({ position, path, speed = 0.5, anchor = [position[0], position
       {[-0.29, 0.29].map((x, index) => <mesh key={`front-leg-${x}`} ref={(node) => { legs.current[index] = node }} position={[x, 0.16, 0.32]} castShadow><boxGeometry args={[0.15, 0.62, 0.17]} /><meshStandardMaterial color="#302127" /></mesh>)}
       {[-0.29, 0.29].map((x, index) => <mesh key={`back-leg-${x}`} ref={(node) => { legs.current[index + 2] = node }} position={[x, 0.16, -0.34]} castShadow><boxGeometry args={[0.15, 0.62, 0.17]} /><meshStandardMaterial color="#302127" /></mesh>)}
       <group ref={tail} position={[0, 0.65, -0.58]} rotation={[0, 0, 0.2]}><mesh position={[0, 0, -0.25]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.06, 0.09, 0.5, 8]} /><meshStandardMaterial color="#4a2b30" roughness={0.9} /></mesh></group>
+      </>}
     </group>
     <DogSleepMarks position={[position[0] + 0.1, position[1] + 1.2, position[2] + 0.85]} visible={sleeping} />
     <DogBowl position={[position[0] + 0.5, 0.04, position[2] + 0.62]} />
@@ -1347,6 +1452,7 @@ function ThreeStoreyStairs() {
     const height = 0.45 + index * 0.5
     return <mesh key={`upper-${index}`} position={[-8.4 + index * 0.5, height / 2, -3.05]} castShadow><boxGeometry args={[0.52, height, 1.7]} /><meshStandardMaterial color={index % 2 ? '#4b3031' : '#694239'} roughness={0.92} /></mesh>
   })
+
   return <group>
     {lowerSteps}
     {upperSteps}
@@ -1722,10 +1828,55 @@ function WallSconce({ position, color, phase = 0, unstable = false }) {
 
 function StudyRats({ reacted = false }) {
   return <>
-    <Rat path={[[-5.15, -2.45], [-4.05, -2.45], [-4.05, -1.1], [-5.15, -1.1]]} phase={0.2} speed={reacted ? 0.3 : 0.55} scale={0.9} reacted={reacted} />
-    <Rat path={[[3.1, -4.35], [5.6, -4.35], [5.6, -2.75], [3.1, -2.75]]} phase={1.8} speed={0.48} scale={0.82} />
-    <Rat path={[[-1.35, 3.9], [0.7, 3.9], [0.7, 4.55], [-1.35, 4.55]]} phase={3.1} speed={0.62} scale={0.72} />
+    <LowPolyRat variant="Rat1" path={[[-5.15, -2.45], [-4.05, -2.45], [-4.05, -1.1], [-5.15, -1.1]]} phase={0.2} speed={reacted ? 0.3 : 0.55} scale={0.9} reacted={reacted} />
+    <LowPolyRat variant="Rat2" path={[[3.1, -4.35], [5.6, -4.35], [5.6, -2.75], [3.1, -2.75]]} phase={1.8} speed={0.48} scale={0.82} />
+    <LowPolyRat variant="Rat3" path={[[-1.35, 3.9], [0.7, 3.9], [0.7, 4.55], [-1.35, 4.55]]} phase={3.1} speed={0.62} scale={0.72} />
   </>
+}
+
+function LowPolyRat({ variant = 'Rat1', path, phase = 0, speed = 0.5, scale = 1, floorY = -0.1, reacted = false }) {
+  const rat = useRef()
+  const legs = useRef([])
+  const { scene } = useGLTF('/models/rat-pack.glb')
+  const source = useMemo(() => scene.getObjectByName(variant), [scene, variant])
+  const model = useMemo(() => source ? source.clone(true) : scene.clone(true), [scene, source])
+
+  useFrame(({ clock }) => {
+    if (!rat.current || path.length < 2) return
+    const routePosition = (clock.elapsedTime * speed + phase) % path.length
+    const segment = Math.floor(routePosition)
+    const progress = routePosition - segment
+    const from = path[segment]
+    const to = path[(segment + 1) % path.length]
+    const x = reacted ? path[0][0] : THREE.MathUtils.lerp(from[0], to[0], progress)
+    const z = reacted ? path[0][1] : THREE.MathUtils.lerp(from[1], to[1], progress)
+    const bob = Math.abs(Math.sin(clock.elapsedTime * (reacted ? 15 : 10) + phase)) * (reacted ? 0.04 : 0.018)
+    rat.current.position.set(x, floorY + bob, z)
+    rat.current.rotation.y = reacted ? Math.sin(clock.elapsedTime * 2 + phase) * 0.16 : Math.atan2(to[0] - from[0], to[1] - from[1])
+    rat.current.rotation.z = reacted ? Math.sin(clock.elapsedTime * 5 + phase) * 0.12 : 0
+    const legSwing = reacted ? Math.sin(clock.elapsedTime * 5 + phase) * 0.14 : Math.sin(clock.elapsedTime * 9 + phase) * 0.42
+    legs.current.forEach((leg, index) => {
+      if (leg) {
+        leg.rotation.x = legSwing * (index % 2 === 0 ? 1 : -1)
+        leg.rotation.z = reacted ? Math.sin(clock.elapsedTime * 4 + phase) * 0.08 : 0
+      }
+    })
+    rat.current.scale.y = scale * 0.48 * (reacted ? 0.96 + Math.sin(clock.elapsedTime * 5 + phase) * 0.025 : 1)
+  })
+
+  return <group ref={rat} position={[path[0][0], floorY, path[0][1]]} scale={scale * 0.48}>
+    <primitive object={model} position={[0, -0.06, 0]} rotation={[0, Math.PI, 0]} castShadow />
+    {[[-0.24, 0.25, 0.34], [0.24, 0.25, 0.34], [-0.24, 0.25, -0.34], [0.24, 0.25, -0.34]].map(([x, y, z], index) => <group key={`rat-leg-${index}`} ref={(node) => { legs.current[index] = node }} position={[x, y, z]}>
+      <mesh position={[0, -0.12, 0]} castShadow>
+        <boxGeometry args={[0.14, 0.25, 0.14]} />
+        <meshStandardMaterial color="#3b2b2b" roughness={0.95} />
+      </mesh>
+      <mesh position={[0, -0.25, 0]} castShadow>
+        <boxGeometry args={[0.17, 0.06, 0.2]} />
+        <meshStandardMaterial color="#2d2325" roughness={0.98} />
+      </mesh>
+    </group>)}
+  </group>
 }
 
 function Rat({ path, phase = 0, speed = 0.5, scale = 1, floorY = -0.1, reacted = false }) {
@@ -2655,6 +2806,7 @@ function App() {
     if (task.requiresHammer) {
       setHammerSwing((count) => count + 1)
       setCameraShake((value) => value + 1)
+      playWeaponSound('hit')
     }
     setNearbyTask(null)
     setMessage(task.reward > 0 ? `${task.actionText} You now have ${gems + task.reward} of ${GEM_REQUIREMENT} gems.` : task.actionText)
