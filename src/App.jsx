@@ -6,6 +6,11 @@ import { clone as cloneSkinnedModel } from 'three/examples/jsm/utils/SkeletonUti
 
 useGLTF.preload('/models/dog.glb')
 useGLTF.preload('/models/rat-pack.glb')
+useGLTF.preload('/models/low-poly-warhammer.glb')
+useGLTF.preload('/models/low-poly-hanging-light.glb')
+useGLTF.preload('/models/camping-chairs.glb')
+useGLTF.preload('/models/cobwebs-blender-asset-library.glb')
+useGLTF.preload('/models/old-wooden-desk-lowpoly.glb')
 
 const HOTSPOTS = {
   desk: { label: 'Writing desk', short: 'Desk', location: 'East wall', icon: '⌁' },
@@ -460,6 +465,8 @@ function HammerHand({ active, swing = 0 }) {
   const lastSwing = useRef(swing)
   const swingStarted = useRef(-10)
   const { camera } = useThree()
+  const { scene } = useGLTF('/models/low-poly-warhammer.glb')
+  const model = useMemo(() => scene.clone(true), [scene])
   const basePosition = new THREE.Vector3(0.5, -0.42, -0.92)
   const baseRotation = [0.16, -0.16, -0.3]
   const animatedPosition = useRef(basePosition.clone())
@@ -485,10 +492,8 @@ function HammerHand({ active, swing = 0 }) {
   })
 
   return <group ref={hand} visible={active} renderOrder={20}>
-    <mesh position={[0.08, -0.43, 0.08]} rotation={[0.26, 0, -0.2]} renderOrder={20}><cylinderGeometry args={[0.15, 0.18, 0.92, 10]} /><meshStandardMaterial color="#6f4638" roughness={0.8} depthTest={false} /></mesh>
-    <mesh position={[0, -0.1, 0]} renderOrder={20}><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
-    <mesh position={[0, 0.22, 0]} renderOrder={20}><boxGeometry args={[0.78, 0.24, 0.22]} /><meshStandardMaterial color="#7c878a" emissive="#39484e" emissiveIntensity={0.42} metalness={0.85} roughness={0.2} depthTest={false} /></mesh>
-    <mesh position={[0, 0.22, 0.13]} renderOrder={20}><boxGeometry args={[0.42, 0.09, 0.06]} /><meshStandardMaterial color="#b6c0c0" metalness={0.9} roughness={0.16} depthTest={false} /></mesh>
+    <primitive object={model} position={[0, -0.58, 0.04]} scale={0.62} renderOrder={20} />
+    <mesh position={[0, -0.1, 0.02]} renderOrder={20}><sphereGeometry args={[0.2, 14, 10]} /><meshStandardMaterial color="#a87562" roughness={0.9} depthTest={false} /></mesh>
   </group>
 }
 
@@ -1076,6 +1081,18 @@ function HauntedRoomContents({ found, hasHammer, hasGun, enemiesDefeated, gems =
 
 function HauntedHammer({ position }) {
   const hammer = useRef()
+  const { scene } = useGLTF('/models/low-poly-warhammer.glb')
+  const model = useMemo(() => {
+    const cloned = scene.clone(true)
+    cloned.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true
+        node.receiveShadow = true
+      }
+    })
+    return cloned
+  }, [scene])
+
   useFrame(({ clock }) => {
     if (!hammer.current) return
     hammer.current.position.y = position[1] + Math.sin(clock.elapsedTime * 2.4) * 0.14
@@ -1084,8 +1101,7 @@ function HauntedHammer({ position }) {
   })
 
   return <group ref={hammer} position={position}>
-    <mesh position={[0, -0.28, 0]} rotation={[0.1, 0, -0.1]} castShadow><cylinderGeometry args={[0.1, 0.13, 0.72, 12]} /><meshStandardMaterial color="#704637" roughness={0.75} /></mesh>
-    <mesh position={[0, 0.16, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><boxGeometry args={[0.72, 0.24, 0.22]} /><meshStandardMaterial color="#9ba5a7" emissive="#39484e" emissiveIntensity={0.35} metalness={0.85} roughness={0.2} /></mesh>
+    <primitive object={model} position={[0, -0.65, 0]} scale={0.75} />
     <pointLight color="#a5e7ff" intensity={1.5} distance={2.7} decay={2} />
   </group>
 }
@@ -1357,7 +1373,6 @@ function HauntedLighting() {
 function HauntedLantern({ position, color, intensity, unstable = false, phase = 0 }) {
   const swing = useRef()
   const light = useRef()
-  const bulb = useRef()
   const ceilingY = position[1] < 0 ? 0.02 : position[1] < 5 ? 5.02 : 8.1
   const wireLength = Math.max(0.18, ceilingY - position[1] - 0.28)
   const pivotHeight = wireLength + 0.28
@@ -1373,20 +1388,37 @@ function HauntedLantern({ position, color, intensity, unstable = false, phase = 
     const blink = Math.sin(t * 1.8) > -0.35 ? 1 : 0.18
     const brightness = Math.max(0.08, blink * (0.82 + flicker))
     light.current.intensity = intensity * brightness
-    if (bulb.current) bulb.current.emissiveIntensity = 0.4 + brightness * 1.8
   })
 
   return <group position={position}>
     <group ref={swing} position={[0, pivotHeight, 0]}>
       <group position={[0, -pivotHeight, 0]}>
         <HangingWire length={wireLength} />
-        <mesh castShadow><cylinderGeometry args={[0.2, 0.2, 0.48, 10]} /><meshStandardMaterial color="#302329" metalness={0.65} roughness={0.35} /></mesh>
-        <mesh position={[0, -0.03, 0]}><sphereGeometry args={[0.13, 12, 10]} /><meshStandardMaterial ref={bulb} color="#ffd18a" emissive={color} emissiveIntensity={1.5} /></mesh>
-        <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.35, 0.18, 8]} /><meshStandardMaterial color="#3a272c" metalness={0.5} /></mesh>
+        <LowPolyHangingLight position={[0, -0.5, 0]} scale={0.08} />
         <pointLight ref={light} color={color} intensity={intensity} distance={7} decay={1.5} />
       </group>
     </group>
   </group>
+}
+
+function LowPolyHangingLight({ position = [0, 0, 0], scale = 0.08 }) {
+  return <ImportedProp path="/models/low-poly-hanging-light.glb" position={position} scale={scale} />
+}
+
+function ImportedProp({ path, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }) {
+  const { scene } = useGLTF(path)
+  const model = useMemo(() => {
+    const cloned = scene.clone(true)
+    cloned.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true
+        node.receiveShadow = true
+      }
+    })
+    return cloned
+  }, [scene])
+
+  return <primitive object={model} position={position} rotation={rotation} scale={scale} />
 }
 
 function HauntedRoomShell() {
@@ -1589,10 +1621,7 @@ function HauntedTaskProps({ found }) {
 
 function EvidenceDesk({ position, opened = false }) {
   return <group position={position} rotation={[0, -0.12, 0]}>
-    <mesh position={[0, 0.82, 0]} castShadow><boxGeometry args={[1.7, 0.16, 0.8]} /><meshStandardMaterial color="#594033" roughness={0.88} /></mesh>
-    {[-0.62, 0.62].map((x) => <mesh key={x} position={[x, 0.38, 0]} castShadow><boxGeometry args={[0.14, 0.76, 0.58]} /><meshStandardMaterial color="#3b2929" roughness={0.92} /></mesh>)}
-    <mesh position={[0, opened ? 0.58 : 0.68, opened ? -0.54 : -0.42]} castShadow><boxGeometry args={[1.05, 0.14, 0.38]} /><meshStandardMaterial color="#76503a" roughness={0.82} /></mesh>
-    <mesh position={[0, opened ? 0.84 : 0.71, opened ? -0.55 : -0.43]} rotation={[opened ? -0.24 : 0, 0, 0]}><boxGeometry args={[0.72, 0.025, 0.38]} /><meshStandardMaterial color="#b99a78" roughness={0.95} /></mesh>
+    <ImportedProp path="/models/old-wooden-desk-lowpoly.glb" scale={1.15} />
     {opened && <pointLight position={[0, 0.74, -0.48]} color="#d88b65" intensity={1.1} distance={2.2} />}
   </group>
 }
@@ -1679,12 +1708,8 @@ function BrokenPicture({ position, rotation = [0, 0, 0] }) {
 }
 
 function SpiderWeb({ position, scale = 1 }) {
-  return <group position={position} scale={scale}>
-    <mesh rotation={[0, 0, 0]}><boxGeometry args={[1.9, 0.025, 0.025]} /><meshBasicMaterial color="#b7aebb" transparent opacity={0.5} /></mesh>
-    <mesh rotation={[0, 0, 0.42]}><boxGeometry args={[1.7, 0.025, 0.025]} /><meshBasicMaterial color="#b7aebb" transparent opacity={0.45} /></mesh>
-    <mesh rotation={[0, 0, -0.42]}><boxGeometry args={[1.7, 0.025, 0.025]} /><meshBasicMaterial color="#b7aebb" transparent opacity={0.45} /></mesh>
-    <mesh rotation={[0, 0, 1.12]}><boxGeometry args={[1.45, 0.025, 0.025]} /><meshBasicMaterial color="#b7aebb" transparent opacity={0.4} /></mesh>
-    <mesh position={[0, 0.25, 0]} rotation={[0, 0, 0.25]}><boxGeometry args={[1.2, 0.02, 0.02]} /><meshBasicMaterial color="#b7aebb" transparent opacity={0.38} /></mesh>
+  return <group position={position}>
+    <ImportedProp path="/models/cobwebs-blender-asset-library.glb" rotation={[-Math.PI / 2, 0, 0]} scale={scale * 0.45} />
   </group>
 }
 
@@ -1792,9 +1817,8 @@ function CeilingLamp({ position, color, intensity, phase = 0 }) {
   })
   return <group ref={lamp} position={position}>
     <HangingWire length={0.34} />
-    <mesh castShadow><cylinderGeometry args={[0.06, 0.06, 0.45, 10]} /><meshStandardMaterial color="#34251f" metalness={0.5} /></mesh>
-    <mesh position={[0, -0.3, 0]} castShadow><sphereGeometry args={[0.2, 16, 10]} /><meshStandardMaterial color="#e4b56c" emissive={color} emissiveIntensity={0.8} /></mesh>
-    <pointLight position={[0, -0.34, 0]} color={color} intensity={intensity} distance={7} decay={2} />
+    <LowPolyHangingLight position={[0, -0.5, 0]} scale={0.08} />
+    <pointLight position={[0, -0.42, 0]} color={color} intensity={intensity} distance={7} decay={2} />
   </group>
 }
 
@@ -1958,12 +1982,7 @@ function BrokenMirror() {
 
 function BrokenChair() {
   return <group position={[3.35, 0.04, 1.45]} rotation={[0, -0.25, 0.04]}>
-    <mesh position={[0, 1.1, 0]} castShadow><boxGeometry args={[1.35, 0.16, 1.18]} /><meshStandardMaterial color="#68452f" roughness={0.8} /></mesh>
-    <mesh position={[0, 1.82, 0.42]} rotation={[-0.12, 0, 0]} castShadow><boxGeometry args={[1.25, 1.45, 0.14]} /><meshStandardMaterial color="#5a3c2d" roughness={0.8} /></mesh>
-    {[-0.48, 0.48].map((x) => <mesh key={`front-${x}`} position={[x, 0.52, 0.38]} rotation={[0.08, 0, x * 0.05]} castShadow><boxGeometry args={[0.14, 1.1, 0.14]} /><meshStandardMaterial color="#4c3327" /></mesh>)}
-    <mesh position={[0.48, 0.5, -0.38]} rotation={[0.52, 0, -0.2]} castShadow><boxGeometry args={[0.14, 1.2, 0.14]} /><meshStandardMaterial color="#4c3327" /></mesh>
-    <mesh position={[-0.46, 0.28, -0.38]} rotation={[1.02, 0, 0.2]} castShadow><boxGeometry args={[0.16, 0.8, 0.16]} /><meshStandardMaterial color="#4c3327" /></mesh>
-    <mesh position={[-0.85, 0.08, 0.05]} rotation={[0.2, 0.4, 0.5]} castShadow><boxGeometry args={[0.22, 0.18, 0.5]} /><meshStandardMaterial color="#9a6240" /></mesh>
+    <ImportedProp path="/models/camping-chairs.glb" scale={0.7} />
   </group>
 }
 
@@ -2119,14 +2138,9 @@ function Painting({ selected, ...props }) {
 
 function Desk({ opened = false, selected, ...props }) {
   return <group position={[4.55, 0, -3.55]} {...props}>
-    <mesh position={[0, 1.25, 0]} castShadow><boxGeometry args={[2.45, 0.2, 1.05]} /><meshStandardMaterial color="#6e4932" roughness={0.65} /></mesh>
-    {[-0.92, 0.92].map((x) => <mesh key={x} position={[x, 0.6, 0]} castShadow><boxGeometry args={[0.18, 1.3, 0.8]} /><meshStandardMaterial color="#513627" /></mesh>)}
-    <mesh position={[0, 1.62, -0.2]} castShadow><boxGeometry args={[0.85, 0.6, 0.5]} /><meshStandardMaterial color="#3e2a22" roughness={0.75} /></mesh>
-    <mesh position={[0, opened ? 1.42 : 1.62, opened ? -0.42 : -0.2]} castShadow><boxGeometry args={[0.92, 0.16, 0.5]} /><meshStandardMaterial color="#8a5a3b" roughness={0.7} /></mesh>
-    {opened && <mesh position={[0, 1.5, -0.43]}><boxGeometry args={[0.58, 0.025, 0.32]} /><meshStandardMaterial color="#d0b28a" roughness={0.95} /></mesh>}
-    <mesh position={[0, 1.95, 0.12]} castShadow><cylinderGeometry args={[0.18, 0.18, 0.42, 24]} /><meshStandardMaterial color="#b99455" metalness={0.6} /></mesh>
-    <mesh position={[0, 2.18, 0.12]} castShadow><sphereGeometry args={[0.35, 20, 12]} /><meshStandardMaterial color="#e2b66d" emissive="#cc762f" emissiveIntensity={0.45} /></mesh>
-    {selected && <pointLight position={[0, 2, 0]} color="#ffbd67" intensity={4} distance={3} />}
+    <ImportedProp path="/models/old-wooden-desk-lowpoly.glb" scale={1.3} />
+    {opened && <mesh position={[0, 0.82, -0.36]}><boxGeometry args={[0.58, 0.025, 0.32]} /><meshStandardMaterial color="#d0b28a" roughness={0.95} /></mesh>}
+    {selected && <pointLight position={[0, 1.25, 0]} color="#ffbd67" intensity={4} distance={3} />}
   </group>
 }
 
