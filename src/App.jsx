@@ -14,6 +14,8 @@ useGLTF.preload('/models/old-wooden-desk-lowpoly.glb')
 useGLTF.preload('/models/empty-cross.glb')
 useGLTF.preload('/models/file-corruption.glb')
 useGLTF.preload('/models/trash-can.glb')
+useGLTF.preload('/models/snuffbox-portrait-miniature.glb')
+useGLTF.preload('/models/scifi-gun-lowpoly.glb')
 
 
 const HOTSPOTS = {
@@ -409,10 +411,10 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
     <Canvas key={hauntedRoom ? 'haunted-room' : 'study-room'} shadows={!lowQuality} camera={{ position: [0, 1.65, 0], fov: 74 }} dpr={lowQuality ? [0.7, 1] : [1, 1.6]}>
       <color attach="background" args={[hauntedRoom ? '#120f15' : '#172522']} />
       <fog attach="fog" args={[hauntedRoom ? '#120f15' : '#172522', hauntedRoom ? 18 : 12, hauntedRoom ? 45 : 24]} />
-      <ambientLight intensity={hauntedRoom ? 0.72 : 0.48} color={hauntedRoom ? '#c5bfd0' : '#b9d6c9'} />
-      <hemisphereLight skyColor={hauntedRoom ? '#d9d4ff' : '#b9d6c9'} groundColor={hauntedRoom ? '#3b2834' : '#263b36'} intensity={hauntedRoom ? 0.9 : 0.35} />
-      <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 0.8} color={hauntedRoom ? '#e0dcff' : '#f4d3a0'} />
-      <spotLight position={[-2, 8, 3]} angle={0.45} penumbra={0.75} intensity={hauntedRoom ? 42 : 70} color={hauntedRoom ? '#c4b8df' : '#f4d3a0'} castShadow shadow-mapSize={[1024, 1024]} />
+      <ambientLight intensity={hauntedRoom ? 0.72 : 0.78} color={hauntedRoom ? '#c5bfd0' : '#d9e4d2'} />
+      <hemisphereLight skyColor={hauntedRoom ? '#d9d4ff' : '#dcebdc'} groundColor={hauntedRoom ? '#3b2834' : '#385148'} intensity={hauntedRoom ? 0.9 : 0.62} />
+      <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 1.5} color={hauntedRoom ? '#e0dcff' : '#fff0c8'} />
+      <spotLight position={[-2, 8, 3]} angle={0.5} penumbra={0.72} intensity={hauntedRoom ? 42 : 105} color={hauntedRoom ? '#c4b8df' : '#ffe7b0'} castShadow shadow-mapSize={[1024, 1024]} />
       <AtmosphericMotes hauntedRoom={hauntedRoom} lowQuality={lowQuality} />
       <Flashlight enabled={flashlightOn} muted={muted || paused} />
       <BackgroundMusic volume={audioSettings.music} muted={muted} />
@@ -605,9 +607,7 @@ function GunPickup({ position }) {
   })
 
   return <group ref={gun} position={position}>
-    <mesh position={[0, 0, 0.35]} castShadow><boxGeometry args={[0.16, 0.18, 0.9]} /><meshStandardMaterial color="#858f91" metalness={0.9} roughness={0.2} /></mesh>
-    <mesh position={[0, -0.22, -0.18]} rotation={[0.12, 0, -0.18]} castShadow><boxGeometry args={[0.2, 0.52, 0.2]} /><meshStandardMaterial color="#51322b" roughness={0.8} /></mesh>
-    <mesh position={[0, 0.02, -0.18]}><boxGeometry args={[0.24, 0.12, 0.2]} /><meshStandardMaterial color="#5a6567" metalness={0.85} roughness={0.22} /></mesh>
+    <ImportedProp path="/models/scifi-gun-lowpoly.glb" position={[-0.33, -0.48, -0.65]} scale={0.008} />
     <pointLight color="#e4b26d" intensity={1.5} distance={2.5} decay={2} />
   </group>
 }
@@ -1766,9 +1766,7 @@ function TrashCan({ position, rotation = [0, 0, 0] }) {
 
 function OldGun({ position, rotation }) {
   return <group position={position} rotation={rotation}>
-    <mesh position={[0, 0, 0.58]}><boxGeometry args={[0.12, 0.12, 1.35]} /><meshStandardMaterial color="#758084" metalness={0.75} roughness={0.3} /></mesh>
-    <mesh position={[0, -0.06, -0.3]} rotation={[0.15, 0, 0]}><boxGeometry args={[0.2, 0.24, 0.62]} /><meshStandardMaterial color="#3c2724" roughness={0.75} /></mesh>
-    <mesh position={[0, -0.17, -0.68]} rotation={[0.3, 0, 0]}><boxGeometry args={[0.14, 0.38, 0.2]} /><meshStandardMaterial color="#2c2020" roughness={0.8} /></mesh>
+    <ImportedProp path="/models/scifi-gun-lowpoly.glb" position={[-0.37, -0.54, -0.73]} scale={0.009} />
   </group>
 }
 
@@ -1780,6 +1778,12 @@ function RoomLighting() {
     <WallSconce position={[-3.8, 4.25, -5.03]} color="#ffc078" phase={0.5} />
     <WallSconce position={[0, 4.25, -5.03]} color="#ffcf83" phase={2.2} unstable />
     <WallSconce position={[3.8, 4.25, -5.03]} color="#c3d8ff" phase={4.1} />
+    <pointLight position={[-5.5, 3.4, 2.7]} color="#ffd49a" intensity={10} distance={8} decay={2} />
+    <pointLight position={[0, 3.1, 2.2]} color="#ffe0ae" intensity={12} distance={9} decay={2} />
+    <pointLight position={[5.4, 3.5, 2.7]} color="#e8d0ff" intensity={9} distance={8} decay={2} />
+    <pointLight position={[-5.2, 2.1, -1.4]} color="#ffc98f" intensity={7} distance={7} decay={2} />
+    <pointLight position={[5.2, 2.1, -1.2]} color="#d9c4ff" intensity={7} distance={7} decay={2} />
+    <pointLight position={[0, 1.2, 3.8]} color="#ffe5bb" intensity={6} distance={7} decay={2} />
   </>
 }
 
@@ -2094,27 +2098,17 @@ function Rug() {
 
 function Bookcase(props) {
   return <group position={[-5.65, 1.65, -3.8]} {...props}>
-    <React.Suspense fallback={<FallbackBookcase />}>
-      <ImportedProp path="/models/wooden-book-shelf-lowpoly.glb" position={[0.74, -1.57, 0.12]} rotation={[0, Math.PI / 2, 0]} scale={[0.55, 0.95, 0.55]} />
+    <React.Suspense fallback={null}>
+      <ImportedProp path="/models/wooden-book-shelf-lowpoly.glb" position={[-0.74, -1.57, -0.12]} rotation={[0, -Math.PI / 2, 0]} scale={[0.55, 0.95, 0.55]} />
     </React.Suspense>
   </group>
-}
-
-function FallbackBookcase() {
-  return <>
-    <RoundedBox args={[1.5, 3.15, 0.48]} radius={0.05} smoothness={3} castShadow><meshStandardMaterial color="#54382b" roughness={0.75} /></RoundedBox>
-    {[0.9, 0.05, -0.8].map((y) => <mesh key={y} position={[0, y, -0.27]} castShadow><boxGeometry args={[1.3, 0.08, 0.72]} /><meshStandardMaterial color="#b37b4d" /></mesh>)}
-    {[-0.37, -0.1, 0.2, 0.48].map((x, i) => <mesh key={`top-book-${x}`} position={[x, 0.56, -0.28]} rotation={[0, 0, i % 2 ? -0.03 : 0.03]} castShadow><boxGeometry args={[0.18, 0.62 + (i % 2) * 0.1, 0.24]} /><meshStandardMaterial color={['#d29b57', '#6d8c7a', '#b95845', '#c6bb88'][i]} /></mesh>)}
-    {[-0.35, -0.1, 0.2, 0.47].map((x, i) => <mesh key={`bottom-book-${x}`} position={[x, -0.43, -0.28]} castShadow><boxGeometry args={[0.2, 0.7, 0.23]} /><meshStandardMaterial color={['#9b5a4b', '#c4a05b', '#688477', '#b87953'][i]} /></mesh>)}
-  </>
 }
 
 function Painting({ selected, ...props }) {
   return <group position={[0, 2.75, -5.02]} {...props}>
     <mesh castShadow><boxGeometry args={[2.75, 2.15, 0.18]} /><meshStandardMaterial color="#a8753f" metalness={0.65} roughness={0.3} /></mesh>
     <mesh position={[0, 0, 0.11]}><planeGeometry args={[2.35, 1.75]} /><meshStandardMaterial color="#3b5450" roughness={0.9} /></mesh>
-    <mesh position={[0, -0.1, 0.2]}><circleGeometry args={[0.58, 32]} /><meshStandardMaterial color="#ad7257" roughness={0.9} /></mesh>
-    <mesh position={[0, -0.03, 0.23]}><coneGeometry args={[0.45, 0.95, 4]} /><meshStandardMaterial color="#273934" roughness={0.85} /></mesh>
+    <ImportedProp path="/models/snuffbox-portrait-miniature.glb" position={[0, 0, 0.25]} scale={0.02} />
     <mesh position={[0, -1.14, 0.16]}><boxGeometry args={[1.25, 0.18, 0.09]} /><meshStandardMaterial color="#d8b26a" metalness={0.5} roughness={0.35} /></mesh>
     {selected && <mesh position={[0, 0, 0.3]}><planeGeometry args={[2.9, 2.3]} /><meshBasicMaterial color="#d9b56d" transparent opacity={0.08} side={THREE.DoubleSide} /></mesh>}
   </group>
