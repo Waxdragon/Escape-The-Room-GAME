@@ -11,6 +11,10 @@ useGLTF.preload('/models/low-poly-hanging-light.glb')
 useGLTF.preload('/models/camping-chairs.glb')
 useGLTF.preload('/models/cobwebs-blender-asset-library.glb')
 useGLTF.preload('/models/old-wooden-desk-lowpoly.glb')
+useGLTF.preload('/models/empty-cross.glb')
+useGLTF.preload('/models/file-corruption.glb')
+useGLTF.preload('/models/trash-can.glb')
+
 
 const HOTSPOTS = {
   desk: { label: 'Writing desk', short: 'Desk', location: 'East wall', icon: '⌁' },
@@ -1557,9 +1561,11 @@ function HauntedRoomProps({ found }) {
     <SpiderWeb position={[-7.9, 6.9, -6.7]} scale={0.9} />
     <BrokenFurniture position={[-3.6, 0, 4.5]} />
     <BrokenFurniture position={[-3.6, 5, 4.5]} />
+    <TrashCan position={[9.15, 0, 5.85]} rotation={[0, -0.35, 0]} />
+    <TrashCan position={[-9.15, 5, -5.85]} rotation={[0, 0.45, 0]} />
     <RitualTable position={[0, 0, -4.55]} />
-    <WeaponRack position={[6.9, 0, -6.55]} />
-    <WeaponRack position={[6.9, 5, -6.55]} />
+    <CorruptWeaponDesk position={[6.9, 0, -6.15]} />
+    <CorruptWeaponDesk position={[6.9, 5, -6.15]} />
     <OldGun position={[6.2, 1.18, -6.35]} rotation={[0, 0, 0.06]} />
     <OldGun position={[7.35, 1.12, -6.34]} rotation={[0, 0, -0.08]} />
     <OldGun position={[6.25, 6.18, -6.35]} rotation={[0, 0, 0.06]} />
@@ -1724,9 +1730,7 @@ function BrokenFurniture({ position }) {
 
 function HauntedCross({ position, scale = 1, rotation = [0, 0, 0] }) {
   return <group position={position} scale={scale} rotation={rotation}>
-    <mesh castShadow><boxGeometry args={[0.28, 3.4, 0.22]} /><meshStandardMaterial color="#543832" roughness={0.9} /></mesh>
-    <mesh position={[0, 0.55, 0]} castShadow><boxGeometry args={[1.85, 0.3, 0.22]} /><meshStandardMaterial color="#543832" roughness={0.9} /></mesh>
-    <mesh position={[0, 0.55, 0.13]}><boxGeometry args={[0.08, 1.2, 0.025]} /><meshStandardMaterial color="#bd8c64" emissive="#48232b" emissiveIntensity={0.25} /></mesh>
+    <ImportedProp path="/models/empty-cross.glb" position={[0, -1.79, 0]} scale={0.12} />
   </group>
 }
 
@@ -1748,43 +1752,15 @@ function RitualKnife({ position, rotation }) {
   </group>
 }
 
-const RACK_WEAPONS = ['sword', 'axe', 'spear', 'mace', 'crossbow']
-
-function WeaponRack({ position }) {
-  return <group position={position} rotation={[0, Math.PI / 2, 0]}>
-    <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[2.2, 0.16, 0.18]} /><meshStandardMaterial color="#5a3b2c" roughness={0.85} /></mesh>
-    <mesh position={[0, 0.25, 0]} castShadow><boxGeometry args={[2.2, 0.16, 0.18]} /><meshStandardMaterial color="#5a3b2c" roughness={0.85} /></mesh>
-    {[-0.85, 0, 0.85].map((x) => <mesh key={x} position={[x, 0.8, 0]} castShadow><boxGeometry args={[0.14, 1.35, 0.14]} /><meshStandardMaterial color="#453029" roughness={0.85} /></mesh>)}
-    {RACK_WEAPONS.map((type, index) => <RackWeapon key={type} type={type} position={[-0.8 + index * 0.4, 0.28, 0.13]} />)}
+function CorruptWeaponDesk({ position }) {
+  return <group position={position} rotation={[0, Math.PI, 0]}>
+    <ImportedProp path="/models/file-corruption.glb" scale={0.3} />
   </group>
 }
 
-function RackWeapon({ type, position }) {
-  const metal = <meshStandardMaterial color="#9ba5a6" emissive="#263437" emissiveIntensity={0.25} metalness={0.88} roughness={0.2} />
-  const wood = <meshStandardMaterial color="#5a3528" roughness={0.8} />
-  if (type === 'sword') return <group position={position}>
-    <mesh position={[0, 0.72, 0]} castShadow><boxGeometry args={[0.1, 1.15, 0.07]} />{metal}</mesh>
-    <mesh position={[0, 0.1, 0]} castShadow><cylinderGeometry args={[0.055, 0.055, 0.24, 8]} />{wood}</mesh>
-    <mesh position={[0, 0.36, 0]} castShadow><boxGeometry args={[0.34, 0.07, 0.1]} />{metal}</mesh>
-  </group>
-  if (type === 'axe') return <group position={position}>
-    <mesh position={[0, 0.68, 0]} castShadow><cylinderGeometry args={[0.045, 0.06, 1.25, 8]} />{wood}</mesh>
-    <mesh position={[0.12, 1.22, 0]} rotation={[0, 0, -0.15]} castShadow><boxGeometry args={[0.42, 0.26, 0.09]} />{metal}</mesh>
-  </group>
-  if (type === 'spear') return <group position={position}>
-    <mesh position={[0, 0.72, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 1.35, 8]} />{wood}</mesh>
-    <mesh position={[0, 1.48, 0]} rotation={[0, 0, Math.PI]} castShadow><coneGeometry args={[0.13, 0.42, 6]} />{metal}</mesh>
-  </group>
-  if (type === 'mace') return <group position={position}>
-    <mesh position={[0, 0.64, 0]} castShadow><cylinderGeometry args={[0.055, 0.07, 1.1, 8]} />{wood}</mesh>
-    <mesh position={[0, 1.25, 0]} castShadow><dodecahedronGeometry args={[0.2, 0]} />{metal}</mesh>
-  </group>
-  return <group position={position}>
-    <mesh position={[0, 0.88, 0]} castShadow><boxGeometry args={[0.65, 0.1, 0.12]} />{wood}</mesh>
-    <mesh position={[0, 1.13, 0]} castShadow><boxGeometry args={[0.1, 0.5, 0.08]} />{metal}</mesh>
-    <mesh position={[-0.29, 1.12, 0]} rotation={[0, 0, -0.45]} castShadow><boxGeometry args={[0.08, 0.42, 0.07]} />{metal}</mesh>
-    <mesh position={[0.29, 1.12, 0]} rotation={[0, 0, 0.45]} castShadow><boxGeometry args={[0.08, 0.42, 0.07]} />{metal}</mesh>
-    <mesh position={[0, 0.42, 0]} castShadow><boxGeometry args={[0.12, 0.75, 0.12]} />{wood}</mesh>
+function TrashCan({ position, rotation = [0, 0, 0] }) {
+  return <group position={position} rotation={rotation}>
+    <ImportedProp path="/models/trash-can.glb" position={[0, -0.29, 0]} scale={0.0025} />
   </group>
 }
 
@@ -2118,11 +2094,19 @@ function Rug() {
 
 function Bookcase(props) {
   return <group position={[-5.65, 1.65, -3.8]} {...props}>
+    <React.Suspense fallback={<FallbackBookcase />}>
+      <ImportedProp path="/models/wooden-book-shelf-lowpoly.glb" position={[0.74, -1.57, 0.12]} rotation={[0, Math.PI / 2, 0]} scale={[0.55, 0.95, 0.55]} />
+    </React.Suspense>
+  </group>
+}
+
+function FallbackBookcase() {
+  return <>
     <RoundedBox args={[1.5, 3.15, 0.48]} radius={0.05} smoothness={3} castShadow><meshStandardMaterial color="#54382b" roughness={0.75} /></RoundedBox>
     {[0.9, 0.05, -0.8].map((y) => <mesh key={y} position={[0, y, -0.27]} castShadow><boxGeometry args={[1.3, 0.08, 0.72]} /><meshStandardMaterial color="#b37b4d" /></mesh>)}
-    {[-0.37, -0.1, 0.2, 0.48].map((x, i) => <mesh key={x} position={[x, 0.56, -0.28]} rotation={[0, 0, i % 2 ? -0.03 : 0.03]} castShadow><boxGeometry args={[0.18, 0.62 + (i % 2) * 0.1, 0.24]} /><meshStandardMaterial color={['#d29b57', '#6d8c7a', '#b95845', '#c6bb88'][i]} /></mesh>)}
-    {[-0.35, -0.1, 0.2, 0.47].map((x, i) => <mesh key={x} position={[x, -0.43, -0.28]} castShadow><boxGeometry args={[0.2, 0.7, 0.23]} /><meshStandardMaterial color={['#9b5a4b', '#c4a05b', '#688477', '#b87953'][i]} /></mesh>)}
-  </group>
+    {[-0.37, -0.1, 0.2, 0.48].map((x, i) => <mesh key={`top-book-${x}`} position={[x, 0.56, -0.28]} rotation={[0, 0, i % 2 ? -0.03 : 0.03]} castShadow><boxGeometry args={[0.18, 0.62 + (i % 2) * 0.1, 0.24]} /><meshStandardMaterial color={['#d29b57', '#6d8c7a', '#b95845', '#c6bb88'][i]} /></mesh>)}
+    {[-0.35, -0.1, 0.2, 0.47].map((x, i) => <mesh key={`bottom-book-${x}`} position={[x, -0.43, -0.28]} castShadow><boxGeometry args={[0.2, 0.7, 0.23]} /><meshStandardMaterial color={['#9b5a4b', '#c4a05b', '#688477', '#b87953'][i]} /></mesh>)}
+  </>
 }
 
 function Painting({ selected, ...props }) {
