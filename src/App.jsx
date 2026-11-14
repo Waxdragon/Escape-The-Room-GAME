@@ -15,7 +15,6 @@ useGLTF.preload('/models/empty-cross.glb')
 useGLTF.preload('/models/file-corruption.glb')
 useGLTF.preload('/models/trash-can.glb')
 useGLTF.preload('/models/snuffbox-portrait-miniature.glb')
-useGLTF.preload('/models/scifi-gun-lowpoly.glb')
 
 
 const HOTSPOTS = {
@@ -607,7 +606,9 @@ function GunPickup({ position }) {
   })
 
   return <group ref={gun} position={position}>
-    <ImportedProp path="/models/scifi-gun-lowpoly.glb" position={[-0.33, -0.48, -0.65]} scale={0.008} />
+    <mesh position={[0, 0, 0.35]} castShadow><boxGeometry args={[0.16, 0.18, 0.9]} /><meshStandardMaterial color="#858f91" metalness={0.9} roughness={0.2} /></mesh>
+    <mesh position={[0, -0.22, -0.18]} rotation={[0.12, 0, -0.18]} castShadow><boxGeometry args={[0.2, 0.52, 0.2]} /><meshStandardMaterial color="#51322b" roughness={0.8} /></mesh>
+    <mesh position={[0, 0.02, -0.18]}><boxGeometry args={[0.24, 0.12, 0.2]} /><meshStandardMaterial color="#5a6567" metalness={0.85} roughness={0.22} /></mesh>
     <pointLight color="#e4b26d" intensity={1.5} distance={2.5} decay={2} />
   </group>
 }
@@ -1766,7 +1767,9 @@ function TrashCan({ position, rotation = [0, 0, 0] }) {
 
 function OldGun({ position, rotation }) {
   return <group position={position} rotation={rotation}>
-    <ImportedProp path="/models/scifi-gun-lowpoly.glb" position={[-0.37, -0.54, -0.73]} scale={0.009} />
+    <mesh position={[0, 0, 0.58]}><boxGeometry args={[0.12, 0.12, 1.35]} /><meshStandardMaterial color="#758084" metalness={0.75} roughness={0.3} /></mesh>
+    <mesh position={[0, -0.06, -0.3]} rotation={[0.15, 0, 0]}><boxGeometry args={[0.2, 0.24, 0.62]} /><meshStandardMaterial color="#3c2724" roughness={0.75} /></mesh>
+    <mesh position={[0, -0.17, -0.68]} rotation={[0.3, 0, 0]}><boxGeometry args={[0.14, 0.38, 0.2]} /><meshStandardMaterial color="#2c2020" roughness={0.8} /></mesh>
   </group>
 }
 
