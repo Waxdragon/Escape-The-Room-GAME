@@ -25,7 +25,6 @@ const HOTSPOTS = {
   door: { label: 'The exit door', short: 'Exit', location: 'South-east wall', icon: '↗' },
   key: { label: 'The last key', short: 'Last key', location: 'Haunted chamber', icon: '⚿' },
   mirror: { label: 'The memory mirror', short: 'Mirror', location: 'First floor', icon: '◌' },
-  ownerNote: { label: 'The owner’s last note', short: 'Owner note', location: 'Ground floor', icon: '✎' },
   secondPortrait: { label: 'The torn family portrait', short: 'Portrait', location: 'Second floor', icon: '◈' },
   hammer: { label: 'The iron hammer', short: 'Hammer', location: 'First floor', icon: '⚒' },
   weapon: { label: 'The rack weapon', short: 'Weapon', location: 'First floor', icon: '⚔' },
@@ -56,7 +55,6 @@ const HAUNTED_TASKS = [
   { id: 'cross', floor: 'First floor', text: 'Press the hidden button', action: 'Press the hidden button', actionText: 'A panel opens behind the cross and reveals a crimson gem.', reward: 1, requiresHammer: true, requiresTask: 'guardDog', position: [0, -6.1], radius: 0.9 },
   { id: 'weapons', floor: 'First floor', text: 'Break open the weapons crate', action: 'Break open the crate', actionText: 'The splintered crate contains a violet gem.', reward: 1, requiresHammer: true, requiresTask: 'guardDog', position: [6.9, -6.05], radius: 0.9 },
   { id: 'groundBody', floor: 'Ground floor', text: 'Open the evidence desk drawer', action: 'Open the evidence drawer', actionText: 'The desk drawer releases a bloodstained file folded around an amber gem.', reward: 1, position: [-5.4, 1.8], radius: 0.9 },
-  { id: 'ownerNote', floor: 'Ground floor', text: 'Read the owner’s last note', action: 'Read the final note', actionText: 'The note is written in your handwriting: “If you hear me upstairs, do not answer.”', reward: 0, requiresTask: 'groundBody', position: [-9.55, 1.2], radius: 1.1 },
   { id: 'groundClue', floor: 'Ground floor', text: 'Unlock the blood-marked cabinet', action: 'Open the old cabinet', actionText: 'The cabinet door groans open. Inside, a green gem glows beside the clues.', reward: 1, position: [5.6, -4.2], radius: 0.85 },
   { id: 'secondBody', floor: 'Second floor', text: 'Open the coat trunk', action: 'Open the coat trunk', actionText: 'The trunk opens to reveal a sealed coat file and a blue gem.', reward: 1, position: [3.6, 3.2], radius: 0.9 },
   { id: 'secondPortrait', floor: 'Second floor', text: 'Study the torn family portrait', action: 'Study the portrait', actionText: 'The painted eyes are wet. The missing owner is standing behind you in the reflection.', reward: 0, requiresTask: 'secondBody', position: [4.3, -1.65], radius: 1.1 },
@@ -134,7 +132,7 @@ function MapMarker({ id, x, y, selected, discovered, onSelect }) {
   )
 }
 
-function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, onFlashlightToggle, canDiscover = () => true, hauntedRoom = false, paused = false, sensitivity = 1, aiming = false }) {
+function FirstPersonController({ targets, found, collected = [], onDiscover, onApproach, onLeave, onBlocked, onShoot, onReload, onAim, onFloorChange, onJump, onFlashlightToggle, canDiscover = () => true, hauntedRoom = false, paused = false, sensitivity = 1, aiming = false, reduceMotion = false }) {
   const player = useRef(new THREE.Vector3(0, 1.65, 0))
   const keys = useRef({})
   const blockedTarget = useRef(null)
@@ -149,6 +147,9 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
   const jumpOffset = useRef(0)
   const jumpVelocity = useRef(0)
   const grounded = useRef(true)
+  const crouchOffset = useRef(0)
+  const bobTime = useRef(0)
+  const bobOffset = useRef(new THREE.Vector2())
   const { camera, gl } = useThree()
 
   useEffect(() => {
@@ -180,7 +181,9 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
       if (paused) return
       const lookScale = 0.0025 * sensitivity * (aiming ? 0.45 : 1)
       yaw.current -= event.movementX * lookScale
-      if (aiming) pitch.current = THREE.MathUtils.clamp(pitch.current - event.movementY * lookScale, -1.15, 0.95)
+      // Keep vertical look available during exploration, not only while aiming.
+      // The smoothed camera below makes both axes feel less twitchy.
+      pitch.current = THREE.MathUtils.clamp(pitch.current - event.movementY * lookScale, -1.15, 0.95)
       if (yaw.current > Math.PI || yaw.current < -Math.PI) yaw.current = THREE.MathUtils.euclideanModulo(yaw.current + Math.PI, Math.PI * 2) - Math.PI
     }
     const down = (event) => {
@@ -250,20 +253,23 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
       return
     }
     const currentKeys = keys.current
+    const step = Math.min(delta, 0.05)
     const forwardInput = (currentKeys.arrowup || currentKeys.w ? 1 : 0) - (currentKeys.arrowdown || currentKeys.s ? 1 : 0)
     const strafeInput = (currentKeys.arrowright || currentKeys.d ? 1 : 0) - (currentKeys.arrowleft || currentKeys.a ? 1 : 0)
-    const smoothFactor = 1 - Math.exp(-12 * delta)
+    const crouching = Boolean(currentKeys.c)
+    const smoothFactor = 1 - Math.exp(-12 * step)
     cameraYaw.current = THREE.MathUtils.lerp(cameraYaw.current, yaw.current, smoothFactor)
-    const targetPitch = aiming ? pitch.current : -0.08
-    cameraPitch.current = THREE.MathUtils.lerp(cameraPitch.current, targetPitch, smoothFactor)
+    cameraPitch.current = THREE.MathUtils.lerp(cameraPitch.current, pitch.current, smoothFactor)
     camera.rotation.set(cameraPitch.current, cameraYaw.current, 0)
 
+    const inputLength = Math.hypot(forwardInput, strafeInput)
+    const normalizedForward = inputLength > 1 ? forwardInput / inputLength : forwardInput
+    const normalizedStrafe = inputLength > 1 ? strafeInput / inputLength : strafeInput
     const forward = new THREE.Vector3(-Math.sin(cameraYaw.current), 0, -Math.cos(cameraYaw.current))
     const right = new THREE.Vector3(Math.cos(cameraYaw.current), 0, -Math.sin(cameraYaw.current))
-    const desired = forward.multiplyScalar(forwardInput * 3.6).add(right.multiplyScalar(strafeInput * 4.2))
-    if (desired.lengthSq() > 0) desired.normalize().multiplyScalar(strafeInput !== 0 && forwardInput === 0 ? 4.2 : 3.6)
-    velocity.current.lerp(desired, 1 - Math.exp(-22 * delta))
-    const step = Math.min(delta, 0.05)
+    const moveSpeed = crouching ? 1.85 : aiming ? 2.75 : 3.6
+    const desired = forward.multiplyScalar(normalizedForward * moveSpeed).add(right.multiplyScalar(normalizedStrafe * moveSpeed))
+    velocity.current.lerp(desired, 1 - Math.exp(-22 * step))
     const xLimit = hauntedRoom ? 10 : 6.05
     const zLimit = hauntedRoom ? 6.45 : 4.45
     player.current.x = THREE.MathUtils.clamp(player.current.x + velocity.current.x * step, -xLimit, xLimit)
@@ -316,8 +322,22 @@ function FirstPersonController({ targets, found, collected = [], onDiscover, onA
       player.current.y += jumpOffset.current
     }
 
-    const crouching = Boolean(currentKeys.c)
-    camera.position.set(player.current.x, player.current.y - (crouching ? 0.38 : 0), player.current.z)
+    const targetCrouchOffset = crouching ? 0.38 : 0
+    crouchOffset.current = THREE.MathUtils.damp(crouchOffset.current, targetCrouchOffset, 14, step)
+    const speedRatio = THREE.MathUtils.clamp(velocity.current.length() / 3.6, 0, 1)
+    const bobStrength = reduceMotion || !grounded.current ? 0 : speedRatio * (crouching ? 0.008 : 0.018)
+    if (bobStrength > 0.001) bobTime.current += step * (8 + velocity.current.length() * 1.4)
+    const bobTarget = new THREE.Vector2(
+      Math.cos(bobTime.current * 0.5) * bobStrength,
+      Math.sin(bobTime.current) * bobStrength,
+    )
+    bobOffset.current.lerp(bobTarget, 1 - Math.exp(-14 * step))
+    camera.position.set(
+      player.current.x,
+      player.current.y - crouchOffset.current + bobOffset.current.y,
+      player.current.z,
+    )
+    camera.rotation.z = reduceMotion ? 0 : -bobOffset.current.x * 0.65
     const currentFloor = hauntedRoom ? (player.current.y < -1 ? 'Ground floor' : player.current.y > 5.8 ? 'Second floor' : 'First floor') : 'First floor'
     if (currentFloor !== lastFloor.current) {
       lastFloor.current = currentFloor
@@ -434,7 +454,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
         <BrokenObjects />
         <StudyRats />
       </>}
-      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} onShoot={onShoot} onReload={onReload} onAim={onAim} onFloorChange={onFloorChange} onJump={onJump} onFlashlightToggle={onFlashlightToggle} hauntedRoom={hauntedRoom} paused={paused} sensitivity={sensitivity} aiming={aiming} />
+      <FirstPersonController key={hauntedRoom ? 'haunted-controller' : 'study-controller'} targets={targets} found={found} collected={collected} onDiscover={onDiscover} onApproach={onApproach} onLeave={onLeave} canDiscover={canDiscover} onBlocked={onBlocked} onShoot={onShoot} onReload={onReload} onAim={onAim} onFloorChange={onFloorChange} onJump={onJump} onFlashlightToggle={onFlashlightToggle} hauntedRoom={hauntedRoom} paused={paused} sensitivity={sensitivity} aiming={aiming} reduceMotion={reduceMotion} />
       <CameraShake token={cameraShake} reduceMotion={reduceMotion} />
       <HammerHand active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
       <HammerImpactEffect active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
