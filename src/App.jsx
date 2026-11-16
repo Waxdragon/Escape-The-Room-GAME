@@ -4,19 +4,6 @@ import { ContactShadows, Float, RoundedBox, useAnimations, useGLTF } from '@reac
 import * as THREE from 'three'
 import { clone as cloneSkinnedModel } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
-useGLTF.preload('/models/dog.glb')
-useGLTF.preload('/models/rat-pack.glb')
-useGLTF.preload('/models/low-poly-warhammer.glb')
-useGLTF.preload('/models/low-poly-hanging-light.glb')
-useGLTF.preload('/models/camping-chairs.glb')
-useGLTF.preload('/models/cobwebs-blender-asset-library.glb')
-useGLTF.preload('/models/old-wooden-desk-lowpoly.glb')
-useGLTF.preload('/models/empty-cross.glb')
-useGLTF.preload('/models/file-corruption.glb')
-useGLTF.preload('/models/trash-can.glb')
-useGLTF.preload('/models/snuffbox-portrait-miniature.glb')
-
-
 const HOTSPOTS = {
   desk: { label: 'Writing desk', short: 'Desk', location: 'East wall', icon: '⌁' },
   painting: { label: 'The brass portrait', short: 'Portrait', location: 'North wall', icon: '◈' },
@@ -427,13 +414,13 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
     onPointerOut: () => { document.body.style.cursor = 'default' },
   })
   return (
-    <Canvas key={hauntedRoom ? 'haunted-room' : 'study-room'} shadows={!lowQuality} camera={{ position: [0, 1.65, 0], fov: 74 }} dpr={lowQuality ? [0.7, 1] : [1, 1.6]}>
+    <Canvas key={hauntedRoom ? 'haunted-room' : 'study-room'} shadows={!lowQuality} camera={{ position: [0, 1.65, 0], fov: 74 }} dpr={lowQuality ? [0.7, 1] : [1, 1.25]}>
       <color attach="background" args={[hauntedRoom ? '#120f15' : '#172522']} />
       <fog attach="fog" args={[hauntedRoom ? '#120f15' : '#172522', hauntedRoom ? 18 : 12, hauntedRoom ? 45 : 24]} />
       <ambientLight intensity={hauntedRoom ? 0.72 : 0.78} color={hauntedRoom ? '#c5bfd0' : '#d9e4d2'} />
       <hemisphereLight skyColor={hauntedRoom ? '#d9d4ff' : '#dcebdc'} groundColor={hauntedRoom ? '#3b2834' : '#385148'} intensity={hauntedRoom ? 0.9 : 0.62} />
       <directionalLight position={[0, 13, 1]} intensity={hauntedRoom ? 2.4 : 1.5} color={hauntedRoom ? '#e0dcff' : '#fff0c8'} />
-      <spotLight position={[-2, 8, 3]} angle={0.5} penumbra={0.72} intensity={hauntedRoom ? 42 : 105} color={hauntedRoom ? '#c4b8df' : '#ffe7b0'} castShadow shadow-mapSize={[1024, 1024]} />
+      <spotLight position={[-2, 8, 3]} angle={0.5} penumbra={0.72} intensity={hauntedRoom ? 42 : 105} color={hauntedRoom ? '#c4b8df' : '#ffe7b0'} castShadow shadow-mapSize={[512, 512]} />
       <AtmosphericMotes hauntedRoom={hauntedRoom} lowQuality={lowQuality} />
       <Flashlight enabled={flashlightOn} muted={muted || paused} />
       <BackgroundMusic volume={audioSettings.music} muted={muted} />
@@ -460,7 +447,7 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
       <HammerImpactEffect active={hauntedRoom && equipped === 'hammer'} swing={hammerSwing} />
       <GunHand active={hauntedRoom && equipped === 'weapon'} shot={shot} reloading={reloading} reduceMotion={reduceMotion} aiming={aiming} />
       <ShotImpactEffects impacts={shotImpacts} />
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />
+      {!lowQuality && <ContactShadows position={[0, 0.01, 0]} opacity={0.46} scale={hauntedRoom ? 22 : 14} blur={2.2} far={hauntedRoom ? 10 : 5} />}
     </Canvas>
   )
 }
@@ -1430,18 +1417,18 @@ function LowPolyHangingLight({ position = [0, 0, 0], scale = 0.08 }) {
   return <ImportedProp path="/models/low-poly-hanging-light.glb" position={position} scale={scale} />
 }
 
-function ImportedProp({ path, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }) {
+function ImportedProp({ path, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, castShadow = false, receiveShadow = false }) {
   const { scene } = useGLTF(path)
   const model = useMemo(() => {
     const cloned = scene.clone(true)
     cloned.traverse((node) => {
       if (node.isMesh) {
-        node.castShadow = true
-        node.receiveShadow = true
+        node.castShadow = castShadow
+        node.receiveShadow = receiveShadow
       }
     })
     return cloned
-  }, [scene])
+  }, [scene, castShadow, receiveShadow])
 
   return <primitive object={model} position={position} rotation={rotation} scale={scale} />
 }
