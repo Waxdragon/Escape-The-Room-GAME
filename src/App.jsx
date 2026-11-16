@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Float, RoundedBox, useAnimations, useGLTF } from '@react-three/drei'
+import { ContactShadows, Float, RoundedBox, useAnimations, useGLTF, useProgress } from '@react-three/drei'
 import * as THREE from 'three'
 import { clone as cloneSkinnedModel } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
@@ -452,6 +452,22 @@ function Room({ onSelect, selected, chestOpened, won, hauntedRoom, targets, foun
   )
 }
 
+function LoadingScreen() {
+  const { active, progress = 0, item = 'Preparing the room...' } = useProgress()
+  if (!active) return null
+  const percent = Math.round(progress)
+  return <div className="loading-screen" role="status" aria-live="polite">
+    <div className="loading-card">
+      <span className="loading-mark">✦</span>
+      <p className="eyebrow">Northmere House</p>
+      <h2>Preparing the room</h2>
+      <p className="loading-item">{item}</p>
+      <div className="loading-track" aria-hidden="true"><i style={{ width: `${percent}%` }} /></div>
+      <div className="loading-meta"><span>LOADING ATMOSPHERE</span><b>{percent}%</b></div>
+    </div>
+  </div>
+}
+
 function CameraShake({ token = 0, reduceMotion = false }) {
   const started = useRef(-10)
   const lastToken = useRef(token)
@@ -629,11 +645,11 @@ function SecondFloorThreats({ defeatedCount = 0, combatActive = false, onAttack 
     {defeatedCount > 0 ? <>
       <DeathStain position={[2.1, 5.19, -1.8]} />
       <DeadBody position={[2.1, 5.18, -1.8]} rotation={[0, 0.35, 0]} />
-    </> : <ArmedFigure position={[2.1, 5.18, -1.8]} rotation={[0, 0.35, 0]} patrol={[[2.1, -1.8], [2.9, -1.8], [2.9, -0.8], [2.1, -0.8]]} speed={0.28} combatActive={combatActive} approachSpeed={0.58} approachOffset={[-1.35, 0]} onAttack={onAttack} />}
+    </> : <ArmedFigure position={[2.1, 5.18, -1.8]} rotation={[0, 0.35, 0]} patrol={[[2.1, -1.8], [2.9, -1.8], [2.9, -0.8], [2.1, -0.8]]} speed={0.28} combatActive={combatActive} approachSpeed={2.8} onAttack={onAttack} />}
     {defeatedCount > 1 ? <>
       <DeathStain position={[4.9, 5.19, 1.6]} scale={0.82} />
       <DeadBody position={[4.9, 5.18, 1.6]} rotation={[0, -1.1, 0]} pale />
-    </> : <ArmedFigure position={[4.9, 5.18, 1.6]} rotation={[0, -1.1, 0]} pale patrol={[[4.9, 1.6], [5.8, 1.6], [5.8, 2.7], [4.9, 2.7]]} speed={0.24} phase={1.4} combatActive={combatActive} approachSpeed={0.5} approachOffset={[1.35, 0]} onAttack={onAttack} />}
+    </> : <ArmedFigure position={[4.9, 5.18, 1.6]} rotation={[0, -1.1, 0]} pale patrol={[[4.9, 1.6], [5.8, 1.6], [5.8, 2.7], [4.9, 2.7]]} speed={0.24} phase={1.4} combatActive={combatActive} approachSpeed={2.6} onAttack={onAttack} />}
   </>
 }
 
@@ -648,6 +664,8 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
   const figure = useRef()
   const weapon = useRef()
   const muzzle = useRef()
+  const attackEffect = useRef()
+  const attackEffectMaterial = useRef()
   const limbs = useRef([])
   const nextAttack = useRef(0)
   const attackStarted = useRef(-10)
@@ -680,18 +698,15 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
       const directionX = distance > 0.001 ? toPlayerX / distance : 0
       const directionZ = distance > 0.001 ? toPlayerZ / distance : 1
       const keepDistance = 1.62
-      const targetX = THREE.MathUtils.clamp(camera.position.x - directionX * keepDistance, -8.55, 8.55)
-      const targetZ = THREE.MathUtils.clamp(camera.position.z - directionZ * keepDistance, -6.05, 6.05)
-      x = currentX
-      z = currentZ
       const attackInProgress = attackStarted.current >= 0 && clock.elapsedTime - attackStarted.current < 0.85
-      if (distance > keepDistance && !attackInProgress) {
-        x = THREE.MathUtils.damp(currentX, targetX, approachSpeed, delta)
-        z = THREE.MathUtils.damp(currentZ, targetZ, approachSpeed, delta)
-        moving = Math.hypot(targetX - currentX, targetZ - currentZ) > 0.05
-      } else {
-        moving = false
-      }
+      const chaseDistance = Math.max(0, distance - keepDistance)
+      const chaseStep = !attackInProgress ? Math.min(chaseDistance, approachSpeed * delta) : 0
+      // Move directly toward the player's current position. The old radial
+      // approach target flipped sides when the player crossed the NPC, which
+      // made the hunters snap backward like a boomerang.
+      x = THREE.MathUtils.clamp(currentX + directionX * chaseStep, -8.55, 8.55)
+      z = THREE.MathUtils.clamp(currentZ + directionZ * chaseStep, -6.05, 6.05)
+      moving = chaseStep > 0.001
       if (distance <= 1.82 && clock.elapsedTime >= nextAttack.current && attackStarted.current < 0) {
         nextAttack.current = clock.elapsedTime + 1.65
         attackStarted.current = clock.elapsedTime
@@ -708,20 +723,32 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
       patrolRotation = Math.atan2(toPlayerX, toPlayerZ)
     }
 
+    const attackProgress = THREE.MathUtils.clamp((clock.elapsedTime - attackStarted.current) / 0.85, 0, 1)
+    const strike = attacking ? Math.sin(attackProgress * Math.PI) : 0
+    const windup = attacking ? THREE.MathUtils.clamp(attackProgress / 0.28, 0, 1) : 0
     const walkingCycle = moving ? Math.sin(clock.elapsedTime * 7.5 + phase) * 0.35 : 0
     figure.current.position.set(x, position[1] + Math.sin(clock.elapsedTime * 1.4 + position[0]) * 0.025, z)
     figure.current.rotation.y = patrolRotation
     figure.current.rotation.z = Math.sin(clock.elapsedTime * 1.2 + position[2]) * 0.035
-    if (limbs.current[0]) limbs.current[0].rotation.x = walkingCycle
+    if (limbs.current[0]) {
+      limbs.current[0].rotation.x = walkingCycle - strike * 0.7
+      limbs.current[0].rotation.z = -0.25 - windup * 0.85 + strike * 0.35
+    }
     if (limbs.current[1]) limbs.current[1].rotation.x = -walkingCycle
     if (limbs.current[2]) limbs.current[2].rotation.x = -walkingCycle
     if (limbs.current[3]) limbs.current[3].rotation.x = walkingCycle
     if (weapon.current) {
-      const attackProgress = THREE.MathUtils.clamp((clock.elapsedTime - attackStarted.current) / 0.85, 0, 1)
-      const slash = attacking ? Math.sin(attackProgress * Math.PI) * 1.8 : 0
+      const slash = strike * 2.2
       weapon.current.rotation.z = -0.05 + Math.sin(t * 0.9) * 0.035 + (firing ? -0.15 : 0) - slash
-      weapon.current.position.y = 1.15 + (firing ? -0.06 : 0) - (attacking ? Math.sin(attackProgress * Math.PI) * 0.18 : 0)
+      weapon.current.position.y = 1.15 + (firing ? -0.06 : 0) - strike * 0.22
+      weapon.current.position.x = 0.5 + strike * 0.12
     }
+    if (attackEffect.current) {
+      attackEffect.current.visible = attacking
+      attackEffect.current.scale.setScalar(0.75 + strike * 0.4)
+      attackEffect.current.rotation.z = -0.9 + attackProgress * 1.8
+    }
+    if (attackEffectMaterial.current) attackEffectMaterial.current.opacity = 0.2 + strike * 0.7
     if (muzzle.current) muzzle.current.visible = firing
   })
   const cloth = pale ? '#747887' : '#272129'
@@ -736,6 +763,7 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
       <mesh position={[0, 0, -0.12]} castShadow><boxGeometry args={[0.38, 0.07, 0.1]} /><meshStandardMaterial color="#c19a5b" metalness={0.65} roughness={0.3} /></mesh>
     </group>
     <mesh ref={muzzle} position={[0.5, 1.15, -0.68]} rotation={[Math.PI / 2, 0, 0]}><coneGeometry args={[0.1, 0.22, 8]} /><meshBasicMaterial color="#ffb45e" transparent opacity={0.9} /></mesh>
+    <mesh ref={attackEffect} position={[0.54, 1.18, -0.48]} visible={false} renderOrder={12}><torusGeometry args={[0.48, 0.045, 8, 20, Math.PI * 0.9]} /><meshBasicMaterial ref={attackEffectMaterial} color="#ef6f61" transparent opacity={0.8} depthTest={false} /></mesh>
     <mesh ref={(node) => { limbs.current[2] = node }} position={[-0.18, 0.38, 0]} castShadow><boxGeometry args={[0.18, 0.75, 0.18]} /><meshStandardMaterial color="#19171d" /></mesh>
     <mesh ref={(node) => { limbs.current[3] = node }} position={[0.18, 0.38, 0]} castShadow><boxGeometry args={[0.18, 0.75, 0.18]} /><meshStandardMaterial color="#19171d" /></mesh>
   </group>
@@ -2963,7 +2991,7 @@ function App() {
     <section className="game-layout">
       <div className="scene-wrap">
         <div className="scene-toolbar"><span className="live-dot" /> LIVE VIEW <span className="toolbar-divider" /> FIRST-PERSON POV <span className="toolbar-right">{hauntedRoom ? 'HAUNTED CHAMBER' : 'ONE ROOM · MOUSE LOOK'}</span></div>
-        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} cameraShake={cameraShake} health={health} gems={gems} flashlightOn={flashlightOn} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} onJump={handleJump} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} />{floorBanner && <div className="floor-banner" role="status"><span className="floor-banner-kicker">NOW ENTERING</span><strong>{floorBanner.toUpperCase()}</strong><span className="floor-banner-line" /></div>}{memoryEcho && <><div className="flashback-wash" aria-hidden="true" /><div className="memory-echo" role="status"><span>✧</span><em>{memoryEcho}</em></div></>}{taskNotice && <div className="task-toast" role="status"><span className="task-toast-icon">{taskNotice.icon}</span><div><p>{taskNotice.title}</p><strong>{taskNotice.text}</strong></div></div>}{hauntedRoom && nearbyTask && !paused && <div className={`interaction-prompt ${actionAvailable ? 'ready' : 'locked'}`}><span className="interaction-key">{actionAvailable ? 'ENTER' : 'LOCKED'}</span><strong>{actionAvailable ? selected === 'key' ? 'TAKE THE FINAL KEY' : selected === 'hammer' ? 'PICK UP THE HAMMER' : selected === 'weapon' ? 'TAKE THE WEAPON' : selected === 'guardDog' || selected === 'guardDog2' ? 'CALM THE BULLDOG' : `INTERACT WITH ${HOTSPOTS[selected]?.short?.toUpperCase() || 'OBJECT'}` : 'COMPLETE EARLIER OBJECTIVES'}</strong></div>}<div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> J JUMP <span>·</span> C CROUCH <span>·</span> L LIGHT <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && !showReplayPrompt && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && health < 40 && <div className="damage-vignette" aria-hidden="true" />}{flashlightOn && <div className="flashlight-hud"><span className="flashlight-indicator" /> FLASHLIGHT ON <small>L TO TOGGLE</small></div>}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{showReplayPrompt && <div className="replay-overlay" role="dialog" aria-modal="true" aria-labelledby="replay-title"><div className="pause-card replay-card"><p className="eyebrow">Escape complete</p><h2 id="replay-title">Would you like to play again?</h2><p>You found the final key and escaped the house.</p><div className="completion-stats"><div><b>{time}</b><small>TIME LEFT</small></div><div><b>{gems}/{GEM_REQUIREMENT}</b><small>GEMS</small></div><div><b>{enemiesDefeated}</b><small>HUNTERS</small></div></div><button className="action-button" type="button" onClick={restartGame}>Play again <span>↵ ENTER</span></button><button className="secondary-button secret-search-button" type="button" onClick={searchForOwner}>Search for the missing owner <span>↗</span></button></div></div>}{secretEnding && <div className="replay-overlay secret-ending" role="dialog" aria-modal="true"><div className="pause-card replay-card"><p className="eyebrow">A hidden ending</p><h2>The house keeps one more secret.</h2><p>You turn the second key. Upstairs, a man whispers your name from behind the wall. His hand presses against the other side — then the house goes quiet.</p><p className="secret-quote">“You were supposed to leave the key outside.”</p><button className="action-button" type="button" onClick={restartGame}>Begin another investigation <span>↵</span></button></div></div>}</div>
+        <div className="scene-frame"><Room onSelect={selectObject} selected={selected} chestOpened={false} won={gameWon} hauntedRoom={hauntedRoom} targets={targets} found={found} collected={collected} hasHammer={hasHammer} hasGun={hasGun} equipped={equipped} droppedItems={droppedItems} hammerSwing={hammerSwing} shot={shot} reloading={reloading} ammo={ammo} enemiesDefeated={enemiesDefeated} paused={paused} sensitivity={sensitivity} lowQuality={lowQuality} shotImpacts={shotImpacts} cameraShake={cameraShake} health={health} gems={gems} flashlightOn={flashlightOn} aiming={aiming} sleepingDogs={sleepingDogs} combatActive={combatActive} onEnemyAttack={damagePlayer} onFloorChange={handleFloorChange} onJump={handleJump} audioSettings={audioSettings} muted={muted} reduceMotion={reduceMotion} onShoot={shootWeapon} onAim={setAiming} onReload={reloadWeapon} onDiscover={discoverObject} onApproach={approachObject} onLeave={leaveObject} canDiscover={isTaskUnlocked} onBlocked={onBlocked} /><LoadingScreen />{floorBanner && <div className="floor-banner" role="status"><span className="floor-banner-kicker">NOW ENTERING</span><strong>{floorBanner.toUpperCase()}</strong><span className="floor-banner-line" /></div>}{memoryEcho && <><div className="flashback-wash" aria-hidden="true" /><div className="memory-echo" role="status"><span>✧</span><em>{memoryEcho}</em></div></>}{taskNotice && <div className="task-toast" role="status"><span className="task-toast-icon">{taskNotice.icon}</span><div><p>{taskNotice.title}</p><strong>{taskNotice.text}</strong></div></div>}{hauntedRoom && nearbyTask && !paused && <div className={`interaction-prompt ${actionAvailable ? 'ready' : 'locked'}`}><span className="interaction-key">{actionAvailable ? 'ENTER' : 'LOCKED'}</span><strong>{actionAvailable ? selected === 'key' ? 'TAKE THE FINAL KEY' : selected === 'hammer' ? 'PICK UP THE HAMMER' : selected === 'weapon' ? 'TAKE THE WEAPON' : selected === 'guardDog' || selected === 'guardDog2' ? 'CALM THE BULLDOG' : `INTERACT WITH ${HOTSPOTS[selected]?.short?.toUpperCase() || 'OBJECT'}` : 'COMPLETE EARLIER OBJECTIVES'}</strong></div>}<div className={`fps-crosshair ${hauntedRoom && equipped === 'weapon' ? 'crosshair-hidden' : ''}`} aria-hidden="true"><span /></div>{hauntedRoom && equipped === 'weapon' && <div className={`gun-aim-pointer ${aiming ? 'active' : ''}`} aria-hidden="true"><span>RIGHT CLICK / SHIFT TO AIM</span></div>}<div className="fps-hint">{paused ? 'PAUSED · PRESS P TO RESUME' : <>WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> J JUMP <span>·</span> C CROUCH <span>·</span> L LIGHT <span>·</span> ENTER INTERACT {hasGun && <><span>·</span> RIGHT CLICK / SHIFT AIM <span>·</span> F / SPACE / CLICK FIRE <span>·</span> R RELOAD</>}</>}</div>{paused && !playerDead && !showReplayPrompt && <div className="pause-overlay"><div className="pause-card"><p className="eyebrow">Game paused</p><h2>Take a breath</h2><button className="action-button" type="button" onClick={() => setPaused(false)}>Resume <span>↗</span></button><button className="secondary-button" type="button" onClick={restartCurrentRoom}>Restart current room</button></div></div>}{playerDead && <div className="death-overlay"><div className="pause-card"><p className="eyebrow">You were defeated</p><h2>The second floor was too dangerous.</h2><p>Restart from the first room and prepare before returning.</p><button className="action-button" type="button" onClick={restartGame}>Restart from the beginning <span>↗</span></button></div></div>}{hauntedRoom && <div className="health-hud" aria-label={`Health ${health} percent`}><span>HEALTH</span><i><em style={{ width: `${health}%` }} /></i><b>{health}%</b></div>}{hauntedRoom && health < 40 && <div className="damage-vignette" aria-hidden="true" />}{flashlightOn && <div className="flashlight-hud"><span className="flashlight-indicator" /> FLASHLIGHT ON <small>L TO TOGGLE</small></div>}{hauntedRoom && hasGun && <div className="weapon-hud"><strong>{reloading ? 'RELOADING' : `AMMO ${ammo} / 6`}</strong><span>F / SPACE / CLICK FIRE · R RELOAD</span></div>}{roomComplete && <div className="win-banner"><span className="win-icon">✦</span><div><p>THREE TASKS COMPLETE</p><strong>The haunted chamber is opening…</strong></div><span className="round-loader">● ● ●</span></div>}{showWinBanner && <div className="win-banner final-win"><span className="win-icon">⚿</span><div><p>FINAL KEY FOUND</p><strong>The house falls silent.</strong></div></div>}{showReplayPrompt && <div className="replay-overlay" role="dialog" aria-modal="true" aria-labelledby="replay-title"><div className="pause-card replay-card"><p className="eyebrow">Escape complete</p><h2 id="replay-title">Would you like to play again?</h2><p>You found the final key and escaped the house.</p><div className="completion-stats"><div><b>{time}</b><small>TIME LEFT</small></div><div><b>{gems}/{GEM_REQUIREMENT}</b><small>GEMS</small></div><div><b>{enemiesDefeated}</b><small>HUNTERS</small></div></div><button className="action-button" type="button" onClick={restartGame}>Play again <span>↵ ENTER</span></button><button className="secondary-button secret-search-button" type="button" onClick={searchForOwner}>Search for the missing owner <span>↗</span></button></div></div>}{secretEnding && <div className="replay-overlay secret-ending" role="dialog" aria-modal="true"><div className="pause-card replay-card"><p className="eyebrow">A hidden ending</p><h2>The house keeps one more secret.</h2><p>You turn the second key. Upstairs, a man whispers your name from behind the wall. His hand presses against the other side — then the house goes quiet.</p><p className="secret-quote">“You were supposed to leave the key outside.”</p><button className="action-button" type="button" onClick={restartGame}>Begin another investigation <span>↵</span></button></div></div>}</div>
         <div className="scene-caption"><span>{hauntedRoom ? 'The new chamber has three floors. Walk to the left stairwell: front stairs descend, back stairs rise.' : 'The exit is sealed. Find the portrait, desk and chest to open the next chamber.'}</span><span className="coordinates">FPS POV <b>●</b> POINTER LOCK</span></div>
       </div>
 
