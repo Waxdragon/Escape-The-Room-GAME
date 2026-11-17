@@ -682,9 +682,11 @@ function DeathStain({ position, scale = 1 }) {
 
 function GordoModel({ pale = false, walking = false, attacking = false, phase = 0, motion = null }) {
   const modelRoot = useRef()
-  const { scene } = useGLTF('/models/gordo-npc.glb')
+  const animationState = useRef(false)
+  const { scene, animations } = useGLTF('/models/gordo-npc-animated.glb')
+  const { actions } = useAnimations(animations, modelRoot)
   const model = useMemo(() => {
-    const cloned = scene.clone(true)
+    const cloned = cloneSkinnedModel(scene)
     cloned.traverse((node) => {
       if (!node.isMesh) return
       node.castShadow = true
@@ -702,15 +704,30 @@ function GordoModel({ pale = false, walking = false, attacking = false, phase = 
     return cloned
   }, [scene, pale])
 
+  useEffect(() => {
+    Object.values(actions || {}).filter(Boolean).forEach((action) => {
+      action.setLoop(THREE.LoopRepeat, Infinity)
+      action.clampWhenFinished = false
+    })
+    return () => Object.values(actions || {}).filter(Boolean).forEach((action) => action.stop())
+  }, [actions])
+
   useFrame(({ clock }) => {
     if (!modelRoot.current) return
     const isWalking = motion?.current?.walking ?? walking
     const isAttacking = motion?.current?.attacking ?? attacking
+    if (isWalking !== animationState.current) {
+      Object.values(actions || {}).filter(Boolean).forEach((action) => {
+        if (isWalking) action.reset().fadeIn(0.12).play()
+        else action.fadeOut(0.12).stop()
+      })
+      animationState.current = isWalking
+    }
     const gait = isWalking ? Math.sin(clock.elapsedTime * 7.5 + phase) : 0
     const stepBob = isWalking ? Math.abs(Math.sin(clock.elapsedTime * 7.5 + phase)) * 0.035 : 0
     const attackLean = isAttacking ? 0.05 : 0
     modelRoot.current.position.set(0.54 + gait * 0.018, 1.29 + stepBob - attackLean, -0.49)
-    modelRoot.current.rotation.set(attacking ? -0.06 : 0, 0, walking ? gait * 0.035 : 0)
+    modelRoot.current.rotation.set(isAttacking ? -0.06 : 0, 0, isWalking ? gait * 0.035 : 0)
   })
 
   return <primitive ref={modelRoot} object={model} position={[0.54, 1.29, -0.49]} rotation={[0, 0, 0]} scale={[0.48, 0.88, 0.88]} />
@@ -779,20 +796,16 @@ function ArmedFigure({ position, rotation = [0, 0, 0], pale = false, patrol = []
       const toPlayerX = camera.position.x - currentX
       const toPlayerZ = camera.position.z - currentZ
       const playerDistance = Math.hypot(toPlayerX, toPlayerZ)
-      const directionX = playerDistance > 0.001 ? toPlayerX / playerDistance : 0
-      const directionZ = playerDistance > 0.001 ? toPlayerZ / playerDistance : 1
-      const facingX = Math.sin(patrolRotation)
-      const facingZ = Math.cos(patrolRotation)
-      const viewDot = playerDistance > 0.001 ? facingX * directionX + facingZ * directionZ : 1
-      const canSeePlayer = playerDistance < 10.5 && (viewDot > 0.18 || playerDistance < 2.4)
+      // Once the player reaches the second floor, combat is a persistent
+      // pursuit. Do not drop into patrol/search when the player moves behind
+      // the hunter; that caused the old back-and-forth looping behavior.
+      const canSeePlayer = true
 
       if (gunshot?.token && gunshot.token !== heardGunshot.current) {
         heardGunshot.current = gunshot.token
         const soundDistance = Math.hypot(gunshot.position[0] - currentX, gunshot.position[2] - currentZ)
-        if (Math.abs(gunshot.position[1] - position[1]) < 1.8 && soundDistance < 14 && !canSeePlayer) {
-          aiState.current = 'investigate'
+        if (Math.abs(gunshot.position[1] - position[1]) < 1.8 && soundDistance < 14) {
           lastKnownPosition.current.set(gunshot.position[0], gunshot.position[2])
-          searchUntil.current = 0
         }
       }
 
