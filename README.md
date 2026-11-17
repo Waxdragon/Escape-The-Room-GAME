@@ -37,10 +37,19 @@ Built with **React**, **Vite**, **Three.js**, and **React Three Fiber**.
 - Guard bulldogs that can be calmed temporarily.
 - An iron hammer for breaking sealed objects and a weapon for surviving the second floor.
 - Hunter combat, aiming, ammunition, reloading, health, enemy defeat tracking, and damage feedback.
+- Animated Gordo hunters with visible arm and leg walking motion, persistent second-floor pursuit, and floor-level death poses.
+- Animated low-poly bats with preserved flight paths and native wing-flap animation.
+- Surface-aware bullet impacts that remain attached to walls, floors, ceilings, and wooden objects.
 - Atmospheric lighting, fog, animated props, environmental story notes, procedural sound effects, footsteps, dog sounds, a heartbeat effect, and floor transitions.
 - Local browser save/resume support.
 - Pause controls, sound sliders, mouse sensitivity, low-quality graphics, reduced motion, and mute options.
 - A standard escape ending and an optional hidden ending after completion.
+
+## 3D assets and performance
+
+The game uses optimized GLB assets in `public/models/` for the major scene characters and props. The supplied body, bat, Gordo, and handgun assets were prepared for browser delivery by reducing unnecessary animation/scene data and resizing oversized textures where appropriate. The static handgun pickup and the first-person weapon use the same optimized model so the visual remains consistent after collection.
+
+Additional runtime optimizations include adaptive pixel ratio, reduced shadow work, limited decorative shadows, lazy model loading through React Three Fiber, and a lightweight loading screen. If the game feels slow on a lower-end device, enable **Low-quality graphics** and **Reduced motion** in the settings panel.
 
 ## Requirements
 
@@ -318,6 +327,8 @@ No environment variables are required by the current game.
 ├── index.html                 Vite HTML entry point
 ├── package.json               Scripts and dependencies
 ├── package-lock.json          Locked dependency versions
+├── public/
+│   └── models/                Optimized GLB characters, props, creatures, and weapons
 ├── src/
 │   ├── App.jsx                Game state, 3D scene, tasks, controls, audio, and UI
 │   ├── main.jsx               React application entry point
